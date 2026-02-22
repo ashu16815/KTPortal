@@ -38,7 +38,8 @@ export default function LoginPage() {
       else if (session.towerId) router.push(`/dashboard/tower/${session.towerId}`)
       else router.push('/dashboard/executive')
     } catch {
-      router.push('/dashboard/executive')
+      // Invalid cookie — clear it and stay on login page
+      document.cookie = 'kt_stub_session=; path=/; max-age=0'
     }
   }, [router])
 
