@@ -16,13 +16,9 @@ interface User {
 
 const STUB_USERS: User[] = [
   { id: 'stub-admin', name: 'Portal Admin', role: 'ADMIN', org: 'ADMIN' },
-  { id: 'stub-exec', name: 'Sarah Chen (Exec)', role: 'EXEC', org: 'TWG' },
-  { id: 'stub-twg-claims', name: 'James Wilson — Claims (TWG)', role: 'TWG_LEAD', org: 'TWG' },
-  { id: 'stub-tcs-claims', name: 'Priya Sharma — Claims (TCS)', role: 'TCS_LEAD', org: 'TCS' },
-  { id: 'stub-twg-policy', name: 'David Park — Policy (TWG)', role: 'TWG_LEAD', org: 'TWG' },
-  { id: 'stub-tcs-policy', name: 'Ananya Patel — Policy (TCS)', role: 'TCS_LEAD', org: 'TCS' },
-  { id: 'stub-twg-data', name: 'Emma Roberts — Data (TWG)', role: 'TWG_LEAD', org: 'TWG' },
-  { id: 'stub-tcs-data', name: 'Raj Kumar — Data (TCS)', role: 'TCS_LEAD', org: 'TCS' },
+  { id: 'stub-exec', name: 'Exec Viewer', role: 'EXEC', org: 'TWG' },
+  { id: 'stub-twg-lead', name: 'TWG Lead (Finance)', role: 'TWG_LEAD', org: 'TWG' },
+  { id: 'stub-tcs-lead', name: 'TCS Lead (Finance)', role: 'TCS_LEAD', org: 'TCS' },
 ]
 
 export default function LoginPage() {
@@ -35,7 +31,7 @@ export default function LoginPage() {
     const match = document.cookie.split('; ').find(c => c.startsWith('kt_stub_session='))
     if (!match) return
     try {
-      const value = match.split('=')[1]
+      const value = match.split('=').slice(1).join('=') // preserve = in base64 padding
       const session = JSON.parse(atob(value)) as User
       if (session.role === 'ADMIN') router.push('/admin')
       else if (session.role === 'EXEC') router.push('/dashboard/executive')
