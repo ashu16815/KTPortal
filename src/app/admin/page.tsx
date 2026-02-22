@@ -1,10 +1,15 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { AppShell } from '@/components/layout/AppShell'
-import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
+import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
+import { useSession } from '@/hooks/useSession'
 import Link from 'next/link'
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface AdminUser {
   id: string
@@ -12,7 +17,7 @@ interface AdminUser {
   name: string
   role: string
   org: string
-  towerId?: string
+  towerId?: string | null
   towerName?: string
   createdAt: string
 }
@@ -20,21 +25,202 @@ interface AdminUser {
 interface AdminTower {
   id: string
   name: string
-  description?: string
+  description?: string | null
+  groupId?: string | null
+  ktPhase?: string
+  twgLeadName?: string | null
+  tcsLeadName?: string | null
   createdAt: string
   updatedAt: string
   _count?: { users: number; submissions: number }
 }
 
+const ROLES = ['ADMIN', 'EXEC', 'TWG_LEAD', 'TCS_LEAD', 'TWG_OWNER', 'TCS_OWNER']
+const ORGS = ['TWG', 'TCS', 'ADMIN']
+const KT_PHASES = ['PLAN', 'KT', 'SS', 'PS', 'OJT', 'VRU', 'COMPLETE']
+
+// ─── Modal ────────────────────────────────────────────────────────────────────
+
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h3 className="text-base font-semibold text-gray-900">{title}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+        </div>
+        <div className="px-5 py-4">{children}</div>
+      </div>
+    </div>
+  )
+}
+
+function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-3 gap-3 items-start">
+      <label className="text-sm font-medium text-gray-700 pt-2">{label}</label>
+      <div className="col-span-2">{children}</div>
+    </div>
+  )
+}
+
+const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white'
+
+// ─── User Modal ───────────────────────────────────────────────────────────────
+
+function UserModal({
+  user,
+  towers,
+  onClose,
+  onSave,
+  saving,
+}: {
+  user: AdminUser | null
+  towers: AdminTower[]
+  onClose: () => void
+  onSave: (data: Partial<AdminUser>) => void
+  saving: boolean
+}) {
+  const [form, setForm] = useState({
+    name: user?.name ?? '',
+    email: user?.email ?? '',
+    role: user?.role ?? 'TWG_LEAD',
+    org: user?.org ?? 'TWG',
+    towerId: user?.towerId ?? '',
+  })
+  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
+
+  return (
+    <Modal title={user ? 'Edit User' : 'Add User'} onClose={onClose}>
+      <div className="space-y-4">
+        <FieldRow label="Name">
+          <input className={inputCls} value={form.name} onChange={e => set('name', e.target.value)} placeholder="Full name" />
+        </FieldRow>
+        <FieldRow label="Email">
+          <input className={inputCls} type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="user@example.com" />
+        </FieldRow>
+        <FieldRow label="Role">
+          <select className={inputCls} value={form.role} onChange={e => set('role', e.target.value)}>
+            {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </FieldRow>
+        <FieldRow label="Org">
+          <select className={inputCls} value={form.org} onChange={e => set('org', e.target.value)}>
+            {ORGS.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </FieldRow>
+        <FieldRow label="Tower">
+          <select className={inputCls} value={form.towerId ?? ''} onChange={e => set('towerId', e.target.value)}>
+            <option value="">— No tower —</option>
+            {towers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </FieldRow>
+        <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button loading={saving} onClick={() => onSave(form)}>
+            {user ? 'Save changes' : 'Create user'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ─── Tower Modal ──────────────────────────────────────────────────────────────
+
+function TowerModal({
+  tower,
+  onClose,
+  onSave,
+  saving,
+}: {
+  tower: AdminTower | null
+  onClose: () => void
+  onSave: (data: Partial<AdminTower>) => void
+  saving: boolean
+}) {
+  const [form, setForm] = useState({
+    name: tower?.name ?? '',
+    description: tower?.description ?? '',
+    ktPhase: tower?.ktPhase ?? 'KT',
+    twgLeadName: tower?.twgLeadName ?? '',
+    tcsLeadName: tower?.tcsLeadName ?? '',
+  })
+  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
+
+  return (
+    <Modal title={tower ? 'Edit Tower' : 'Add Tower'} onClose={onClose}>
+      <div className="space-y-4">
+        <FieldRow label="Name">
+          <input className={inputCls} value={form.name} onChange={e => set('name', e.target.value)} placeholder="Tower name" />
+        </FieldRow>
+        <FieldRow label="Description">
+          <input className={inputCls} value={form.description} onChange={e => set('description', e.target.value)} placeholder="Short description" />
+        </FieldRow>
+        <FieldRow label="KT Phase">
+          <select className={inputCls} value={form.ktPhase} onChange={e => set('ktPhase', e.target.value)}>
+            {KT_PHASES.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </FieldRow>
+        <FieldRow label="TWG Lead">
+          <input className={inputCls} value={form.twgLeadName} onChange={e => set('twgLeadName', e.target.value)} placeholder="TWG lead name" />
+        </FieldRow>
+        <FieldRow label="TCS Lead">
+          <input className={inputCls} value={form.tcsLeadName} onChange={e => set('tcsLeadName', e.target.value)} placeholder="TCS lead name" />
+        </FieldRow>
+        <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button loading={saving} onClick={() => onSave(form)}>
+            {tower ? 'Save changes' : 'Create tower'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// ─── Confirm delete dialog ────────────────────────────────────────────────────
+
+function DeleteConfirm({ label, onConfirm, onCancel, deleting }: { label: string; onConfirm: () => void; onCancel: () => void; deleting: boolean }) {
+  return (
+    <Modal title="Confirm delete" onClose={onCancel}>
+      <p className="text-sm text-gray-700 mb-4">Delete <strong>{label}</strong>? This cannot be undone.</p>
+      <div className="flex justify-end gap-2">
+        <Button variant="secondary" onClick={onCancel}>Cancel</Button>
+        <Button loading={deleting} onClick={onConfirm} className="bg-red-600 hover:bg-red-700 text-white">Delete</Button>
+      </div>
+    </Modal>
+  )
+}
+
+// ─── Role badge ───────────────────────────────────────────────────────────────
+
+const ROLE_COLOR: Record<string, string> = {
+  ADMIN: 'bg-purple-100 text-purple-700',
+  EXEC: 'bg-blue-100 text-blue-700',
+  TWG_LEAD: 'bg-green-100 text-green-700',
+  TCS_LEAD: 'bg-teal-100 text-teal-700',
+  TWG_OWNER: 'bg-lime-100 text-lime-700',
+  TCS_OWNER: 'bg-cyan-100 text-cyan-700',
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function AdminPage() {
+  const { session } = useSession()
+  const [tab, setTab] = useState<'users' | 'towers'>('users')
+  const [userModal, setUserModal] = useState<{ open: boolean; user: AdminUser | null }>({ open: false, user: null })
+  const [towerModal, setTowerModal] = useState<{ open: boolean; tower: AdminTower | null }>({ open: false, tower: null })
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'user' | 'tower'; id: string; label: string } | null>(null)
+
+  const queryClient = useQueryClient()
+
+  // ── Queries ──
   const { data: usersData, isLoading: usersLoading, error: usersError } = useQuery({
     queryKey: ['admin-users'],
     queryFn: async () => {
       const res = await fetch('/api/admin/users', { credentials: 'include' })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err?.error?.message ?? `HTTP ${res.status}`)
-      }
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err?.error?.message ?? `HTTP ${res.status}`) }
       return res.json()
     },
     retry: false,
@@ -44,13 +230,66 @@ export default function AdminPage() {
     queryKey: ['admin-towers'],
     queryFn: async () => {
       const res = await fetch('/api/admin/towers', { credentials: 'include' })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err?.error?.message ?? `HTTP ${res.status}`)
-      }
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err?.error?.message ?? `HTTP ${res.status}`) }
       return res.json()
     },
     retry: false,
+  })
+
+  // ── User mutations ──
+  const createUser = useMutation({
+    mutationFn: async (data: Partial<AdminUser>) => {
+      const res = await fetch('/api/admin/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+      if (!res.ok) throw new Error((await res.json()).error?.message ?? 'Failed')
+      return res.json()
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-users'] }); setUserModal({ open: false, user: null }) },
+  })
+
+  const updateUser = useMutation({
+    mutationFn: async ({ id, ...data }: Partial<AdminUser> & { id: string }) => {
+      const res = await fetch('/api/admin/users', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, ...data }) })
+      if (!res.ok) throw new Error((await res.json()).error?.message ?? 'Failed')
+      return res.json()
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-users'] }); setUserModal({ open: false, user: null }) },
+  })
+
+  const deleteUser = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/admin/users?id=${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error((await res.json()).error?.message ?? 'Failed')
+      return res.json()
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-users'] }); setDeleteTarget(null) },
+  })
+
+  // ── Tower mutations ──
+  const createTower = useMutation({
+    mutationFn: async (data: Partial<AdminTower>) => {
+      const res = await fetch('/api/admin/towers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+      if (!res.ok) throw new Error((await res.json()).error?.message ?? 'Failed')
+      return res.json()
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-towers'] }); setTowerModal({ open: false, tower: null }) },
+  })
+
+  const updateTower = useMutation({
+    mutationFn: async ({ id, ...data }: Partial<AdminTower> & { id: string }) => {
+      const res = await fetch(`/api/admin/towers/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+      if (!res.ok) throw new Error((await res.json()).error?.message ?? 'Failed')
+      return res.json()
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-towers'] }); setTowerModal({ open: false, tower: null }) },
+  })
+
+  const deleteTower = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/admin/towers/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error((await res.json()).error?.message ?? 'Failed')
+      return res.json()
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['admin-towers'] }); setDeleteTarget(null) },
   })
 
   const users: AdminUser[] = usersData?.data ?? []
@@ -58,117 +297,202 @@ export default function AdminPage() {
   const isLoading = usersLoading || towersLoading
   const dbUnavailable = !isLoading && (!!usersError || !!towersError)
 
+  if (session && session.role !== 'ADMIN') {
+    return <AppShell><div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">Admin access required.</div></AppShell>
+  }
   if (isLoading) return <AppShell><LoadingSpinner /></AppShell>
+
+  const handleUserSave = (data: Partial<AdminUser>) => {
+    if (userModal.user) updateUser.mutate({ ...data, id: userModal.user.id })
+    else createUser.mutate(data)
+  }
+
+  const handleTowerSave = (data: Partial<AdminTower>) => {
+    if (towerModal.tower) updateTower.mutate({ ...data, id: towerModal.tower.id })
+    else createTower.mutate(data)
+  }
+
+  const handleDelete = () => {
+    if (!deleteTarget) return
+    if (deleteTarget.type === 'user') deleteUser.mutate(deleteTarget.id)
+    else deleteTower.mutate(deleteTarget.id)
+  }
 
   return (
     <AppShell>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Admin</h1>
-          <p className="text-sm text-gray-500 mt-1">Manage users, towers, and system settings</p>
+        {/* Header */}
+        <div className="flex items-start justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Admin Console</h1>
+            <p className="text-sm text-gray-500 mt-1">Manage users, towers, and system settings</p>
+          </div>
+          <div className="flex gap-2">
+            <Link href="/dashboard/executive" className="text-sm text-blue-600 hover:underline">Executive Dashboard →</Link>
+          </div>
         </div>
 
+        {/* DB unavailable banner */}
         {dbUnavailable && (
           <Card className="border-amber-200 bg-amber-50">
-            <CardHeader><CardTitle className="text-amber-900">Database not connected</CardTitle></CardHeader>
-            {(usersError || towersError) && (
-              <p className="text-sm text-amber-900 font-medium mb-2">
-                Error: {(usersError || towersError)?.message}
-              </p>
-            )}
-            <p className="text-sm text-amber-800 mb-3">Azure SQL (or SQL Server) is required for admin data. In stub mode you can still use the app—login users come from the dropdown.</p>
-            <p className="text-sm text-amber-800 mb-2 font-medium">If you just added DATABASE_URL: restart the dev server so it picks up the new env.</p>
-            <ol className="text-sm text-amber-800 list-decimal list-inside space-y-1 font-mono">
-              <li>Copy <code className="bg-amber-100 px-1 rounded">.env.example</code> to <code className="bg-amber-100 px-1 rounded">.env</code> and set <code className="bg-amber-100 px-1 rounded">DATABASE_URL</code> for Azure SQL</li>
-              <li>Format: <code className="bg-amber-100 px-1 rounded">sqlserver://SERVER.database.windows.net:1433;database=DB;user=USER;password=PASS;encrypt=true</code></li>
-              <li>Run <code className="bg-amber-100 px-1 rounded">npm run db:push</code> to create tables</li>
-              <li>Run <code className="bg-amber-100 px-1 rounded">npm run db:seed</code> to seed data</li>
-            </ol>
+            <p className="text-sm font-medium text-amber-900 mb-1">Database not connected</p>
+            <p className="text-sm text-amber-800">{(usersError || towersError)?.message}</p>
           </Card>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Users</CardTitle>
-              <span className="text-sm text-gray-500">{users.length} total</span>
-            </CardHeader>
-            <div className="max-h-64 overflow-y-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-gray-500 border-b border-gray-100">
-                    <th className="py-2 pr-3">Name</th>
-                    <th className="py-2 pr-3">Role</th>
-                    <th className="py-2 pr-3">Org</th>
-                    <th className="py-2">Tower</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map(u => (
-                    <tr key={u.id} className="border-b border-gray-50 last:border-0">
-                      <td className="py-2 pr-3">
-                        <span className="font-medium text-gray-900">{u.name}</span>
-                        <div className="text-xs text-gray-400 truncate max-w-[180px]">{u.email}</div>
-                      </td>
-                      <td className="py-2 pr-3 text-gray-600">{u.role}</td>
-                      <td className="py-2 pr-3 text-gray-600">{u.org}</td>
-                      <td className="py-2 text-gray-500">{u.towerName ?? '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {users.length === 0 && (
-              <p className="text-sm text-gray-400 py-4">No users in database. Use stub mode or seed the DB.</p>
-            )}
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Towers</CardTitle>
-              <span className="text-sm text-gray-500">{towers.length} total</span>
-            </CardHeader>
-            <div className="max-h-64 overflow-y-auto space-y-2">
-              {towers.map(t => (
-                <div key={t.id} className="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
-                  <div>
-                    <div className="font-medium text-gray-900">{t.name}</div>
-                    {t.description && <div className="text-xs text-gray-500">{t.description}</div>}
-                    {(t._count?.users ?? 0) > 0 && (
-                      <div className="text-xs text-gray-400 mt-0.5">
-                        {t._count?.users} users · {t._count?.submissions ?? 0} submissions
-                      </div>
-                    )}
-                  </div>
-                  <Link
-                    href={`/dashboard/tower/${t.id}`}
-                    className="text-sm text-blue-600 hover:underline"
-                  >
-                    View
-                  </Link>
-                </div>
-              ))}
-            </div>
-            {towers.length === 0 && (
-              <p className="text-sm text-gray-400 py-4">No towers. Run <code className="bg-gray-100 px-1 rounded">npm run db:seed</code> to populate.</p>
-            )}
-          </Card>
+        {/* Tabs */}
+        <div className="flex gap-2">
+          {(['users', 'towers'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                tab === t ? 'bg-slate-800 text-white border-transparent' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-400'
+              }`}
+            >
+              {t === 'users' ? `Users (${users.length})` : `Towers (${towers.length})`}
+            </button>
+          ))}
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick links</CardTitle>
-          </CardHeader>
-          <div className="flex flex-wrap gap-3">
-            <Link href="/dashboard/executive" className="text-blue-600 hover:underline text-sm">
-              Executive Dashboard →
-            </Link>
-            <Link href="/submissions/compare" className="text-blue-600 hover:underline text-sm">
-              Compare submissions →
-            </Link>
-          </div>
-        </Card>
+        {/* Users tab */}
+        {tab === 'users' && (
+          <Card>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-gray-900">Users</h2>
+              <Button onClick={() => setUserModal({ open: true, user: null })}>+ Add User</Button>
+            </div>
+            {users.length === 0 ? (
+              <p className="text-sm text-gray-400 py-4">No users. Run <code className="bg-gray-100 px-1 rounded">npm run db:seed</code>.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-gray-500 uppercase tracking-wide border-b border-gray-100">
+                      <th className="pb-2 pr-4">Name / Email</th>
+                      <th className="pb-2 pr-4">Role</th>
+                      <th className="pb-2 pr-4">Org</th>
+                      <th className="pb-2 pr-4">Tower</th>
+                      <th className="pb-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {users.map(u => (
+                      <tr key={u.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                        <td className="py-2.5 pr-4">
+                          <div className="font-medium text-gray-900">{u.name}</div>
+                          <div className="text-xs text-gray-400">{u.email}</div>
+                        </td>
+                        <td className="py-2.5 pr-4">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ROLE_COLOR[u.role] ?? 'bg-gray-100 text-gray-600'}`}>{u.role}</span>
+                        </td>
+                        <td className="py-2.5 pr-4 text-gray-600">{u.org}</td>
+                        <td className="py-2.5 pr-4 text-gray-500">{u.towerName ?? '—'}</td>
+                        <td className="py-2.5">
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setUserModal({ open: true, user: u })}
+                              className="text-xs text-blue-600 hover:underline"
+                            >Edit</button>
+                            <button
+                              onClick={() => setDeleteTarget({ type: 'user', id: u.id, label: u.name })}
+                              className="text-xs text-red-500 hover:underline"
+                            >Delete</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        )}
+
+        {/* Towers tab */}
+        {tab === 'towers' && (
+          <Card>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-gray-900">Towers</h2>
+              <Button onClick={() => setTowerModal({ open: true, tower: null })}>+ Add Tower</Button>
+            </div>
+            {towers.length === 0 ? (
+              <p className="text-sm text-gray-400 py-4">No towers. Run <code className="bg-gray-100 px-1 rounded">npm run db:seed</code>.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-gray-500 uppercase tracking-wide border-b border-gray-100">
+                      <th className="pb-2 pr-4">Name</th>
+                      <th className="pb-2 pr-4">Phase</th>
+                      <th className="pb-2 pr-4">TWG Lead</th>
+                      <th className="pb-2 pr-4">TCS Lead</th>
+                      <th className="pb-2 pr-4">Users</th>
+                      <th className="pb-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {towers.map(t => (
+                      <tr key={t.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                        <td className="py-2.5 pr-4">
+                          <div className="font-medium text-gray-900">{t.name}</div>
+                          {t.description && <div className="text-xs text-gray-400">{t.description}</div>}
+                        </td>
+                        <td className="py-2.5 pr-4">
+                          <span className="text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-medium">{t.ktPhase ?? 'KT'}</span>
+                        </td>
+                        <td className="py-2.5 pr-4 text-gray-600">{t.twgLeadName ?? '—'}</td>
+                        <td className="py-2.5 pr-4 text-gray-600">{t.tcsLeadName ?? '—'}</td>
+                        <td className="py-2.5 pr-4 text-gray-500">{t._count?.users ?? 0}</td>
+                        <td className="py-2.5">
+                          <div className="flex gap-2">
+                            <Link href={`/dashboard/tower/${t.id}`} className="text-xs text-gray-500 hover:underline">View</Link>
+                            <button
+                              onClick={() => setTowerModal({ open: true, tower: t })}
+                              className="text-xs text-blue-600 hover:underline"
+                            >Edit</button>
+                            <button
+                              onClick={() => setDeleteTarget({ type: 'tower', id: t.id, label: t.name })}
+                              className="text-xs text-red-500 hover:underline"
+                            >Delete</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        )}
       </div>
+
+      {/* Modals */}
+      {userModal.open && (
+        <UserModal
+          user={userModal.user}
+          towers={towers}
+          onClose={() => setUserModal({ open: false, user: null })}
+          onSave={handleUserSave}
+          saving={createUser.isPending || updateUser.isPending}
+        />
+      )}
+      {towerModal.open && (
+        <TowerModal
+          tower={towerModal.tower}
+          onClose={() => setTowerModal({ open: false, tower: null })}
+          onSave={handleTowerSave}
+          saving={createTower.isPending || updateTower.isPending}
+        />
+      )}
+      {deleteTarget && (
+        <DeleteConfirm
+          label={deleteTarget.label}
+          onConfirm={handleDelete}
+          onCancel={() => setDeleteTarget(null)}
+          deleting={deleteUser.isPending || deleteTower.isPending}
+        />
+      )}
     </AppShell>
   )
 }

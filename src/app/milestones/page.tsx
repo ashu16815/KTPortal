@@ -4,11 +4,12 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { AppShell } from '@/components/layout/AppShell'
 import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { queryKeys } from '@/hooks/queryKeys'
 import { formatDate } from '@/lib/utils'
 import { useSession } from '@/hooks/useSession'
-import type { MilestoneDTO, MilestoneStatus } from '@/types'
+import type { MilestoneDTO, MilestoneStatus, TowerDTO } from '@/types'
 
 const STATUS_CONFIG: Record<MilestoneStatus, { label: string; color: string; dot: string }> = {
   PENDING:     { label: 'Pending',     color: 'bg-gray-100 text-gray-600',    dot: 'bg-gray-300' },
@@ -31,14 +32,116 @@ const PHASE_COLOR: Record<string, string> = {
   COMPLETE: 'bg-green-100 text-green-700',
 }
 
+const KT_PHASES = ['PLAN', 'KT', 'SS', 'PS', 'OJT', 'VRU', 'TOLLGATE', 'SIGN_OFF', 'COMPLETE']
+
+const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white'
+
+// ─── Milestone Form Modal ─────────────────────────────────────────────────────
+
+function MilestoneFormModal({
+  milestone,
+  towers,
+  defaultTowerId,
+  onClose,
+  onSave,
+  saving,
+}: {
+  milestone: MilestoneDTO | null
+  towers: TowerDTO[]
+  defaultTowerId: string | undefined
+  onClose: () => void
+  onSave: (data: Record<string, unknown>) => void
+  saving: boolean
+}) {
+  const [form, setForm] = useState({
+    towerId: milestone?.towerId ?? defaultTowerId ?? '',
+    name: milestone?.name ?? '',
+    phase: milestone?.phase ?? 'KT',
+    plannedDate: milestone?.plannedDate ? milestone.plannedDate.slice(0, 10) : '',
+    status: milestone?.status ?? 'PENDING' as MilestoneStatus,
+    notes: milestone?.notes ?? '',
+    actualDate: milestone?.actualDate ? milestone.actualDate.slice(0, 10) : '',
+  })
+  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h3 className="text-base font-semibold text-gray-900">
+            {milestone ? 'Edit Milestone' : 'Add Milestone'}
+          </h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+        </div>
+        <div className="px-5 py-4 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Tower *</label>
+            <select className={inputCls} value={form.towerId} onChange={e => set('towerId', e.target.value)}>
+              <option value="">Select tower...</option>
+              {towers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Name *</label>
+            <input className={inputCls} value={form.name} onChange={e => set('name', e.target.value)} placeholder="Milestone name" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Phase *</label>
+              <select className={inputCls} value={form.phase} onChange={e => set('phase', e.target.value)}>
+                {KT_PHASES.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
+              <select className={inputCls} value={form.status} onChange={e => set('status', e.target.value)}>
+                {Object.entries(STATUS_CONFIG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Planned Date *</label>
+              <input className={inputCls} type="date" value={form.plannedDate} onChange={e => set('plannedDate', e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Actual Date</label>
+              <input className={inputCls} type="date" value={form.actualDate} onChange={e => set('actualDate', e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+            <textarea className={inputCls} rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Optional notes" />
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+            <Button variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button loading={saving} onClick={() => onSave({
+              ...form,
+              actualDate: form.actualDate || undefined,
+            })}>
+              {milestone ? 'Save changes' : 'Add milestone'}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Milestone Row ────────────────────────────────────────────────────────────
+
 function MilestoneRow({
   m,
   onUpdate,
   canEdit,
+  onEdit,
+  onDelete,
 }: {
   m: MilestoneDTO
   onUpdate: (id: string, status: MilestoneStatus) => void
   canEdit: boolean
+  onEdit: (m: MilestoneDTO) => void
+  onDelete: (m: MilestoneDTO) => void
 }) {
   const cfg = STATUS_CONFIG[m.status as MilestoneStatus] ?? STATUS_CONFIG.PENDING
   const isOverdue = m.status !== 'COMPLETE' && new Date(m.plannedDate) < new Date()
@@ -65,28 +168,37 @@ function MilestoneRow({
       <div className="flex items-center gap-2 flex-shrink-0">
         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.color}`}>{cfg.label}</span>
         {canEdit && (
-          <select
-            value={m.status}
-            onChange={e => onUpdate(m.id, e.target.value as MilestoneStatus)}
-            className="text-xs border border-gray-200 rounded px-2 py-1 text-gray-600 bg-white"
-            onClick={e => e.stopPropagation()}
-          >
-            {Object.entries(STATUS_CONFIG).map(([k, v]) => (
-              <option key={k} value={k}>{v.label}</option>
-            ))}
-          </select>
+          <>
+            <select
+              value={m.status}
+              onChange={e => onUpdate(m.id, e.target.value as MilestoneStatus)}
+              className="text-xs border border-gray-200 rounded px-2 py-1 text-gray-600 bg-white"
+              onClick={e => e.stopPropagation()}
+            >
+              {Object.entries(STATUS_CONFIG).map(([k, v]) => (
+                <option key={k} value={k}>{v.label}</option>
+              ))}
+            </select>
+            <button onClick={() => onEdit(m)} className="text-xs text-blue-600 hover:underline">Edit</button>
+            <button onClick={() => onDelete(m)} className="text-xs text-red-500 hover:underline">Del</button>
+          </>
         )}
       </div>
     </div>
   )
 }
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function MilestonesPage() {
   const [statusFilter, setStatusFilter] = useState<string>('active')
   const [groupBy, setGroupBy] = useState<'tower' | 'phase'>('tower')
+  const [formModal, setFormModal] = useState<{ open: boolean; milestone: MilestoneDTO | null }>({ open: false, milestone: null })
+  const [deleteTarget, setDeleteTarget] = useState<MilestoneDTO | null>(null)
   const queryClient = useQueryClient()
   const { session } = useSession()
   const isReadOnly = session?.role === 'EXEC'
+  const isAdmin = session?.role === 'ADMIN'
 
   const params: Record<string, string> = {}
   if (statusFilter === 'at_risk') params.status = 'AT_RISK'
@@ -103,7 +215,13 @@ export default function MilestonesPage() {
     },
   })
 
-  const mutation = useMutation({
+  const { data: towersData } = useQuery<{ data: TowerDTO[] }>({
+    queryKey: queryKeys.towers(),
+    queryFn: async () => { const r = await fetch('/api/towers'); return r.json() },
+    enabled: !isReadOnly,
+  })
+
+  const statusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: MilestoneStatus }) => {
       const res = await fetch('/api/milestones', {
         method: 'PATCH',
@@ -116,7 +234,50 @@ export default function MilestonesPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['milestones'] }),
   })
 
+  const saveMutation = useMutation({
+    mutationFn: async (data: Record<string, unknown>) => {
+      const isEdit = !!formModal.milestone
+      if (isEdit) {
+        const res = await fetch('/api/milestones', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: formModal.milestone!.id, ...data }),
+        })
+        if (!res.ok) throw new Error((await res.json()).error?.message ?? 'Failed')
+        return res.json()
+      } else {
+        const res = await fetch('/api/milestones', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        })
+        if (!res.ok) throw new Error((await res.json()).error?.message ?? 'Failed')
+        return res.json()
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['milestones'] })
+      setFormModal({ open: false, milestone: null })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/milestones/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to delete')
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['milestones'] })
+      setDeleteTarget(null)
+    },
+  })
+
+  const canEditMilestone = (m: MilestoneDTO) =>
+    !isReadOnly && (isAdmin || session?.towerId === m.towerId)
+
   const allMilestones = data?.data ?? []
+  const towers = towersData?.data ?? []
 
   // Filter based on active view
   const milestones = statusFilter === 'active'
@@ -129,14 +290,13 @@ export default function MilestonesPage() {
   type MilestoneGroup = { key: string; items: MilestoneDTO[] }
   const grouped: MilestoneGroup[] = []
   if (groupBy === 'tower') {
-    const towers = [...new Set(milestones.map(m => m.towerName ?? 'Unknown'))]
-    towers.sort().forEach(tower => {
+    const towerNames = [...new Set(milestones.map(m => m.towerName ?? 'Unknown'))]
+    towerNames.sort().forEach(tower => {
       const items = milestones.filter(m => (m.towerName ?? 'Unknown') === tower)
       if (items.length) grouped.push({ key: tower, items })
     })
   } else {
-    const phases = ['PLAN', 'KT', 'SS', 'PS', 'OJT', 'VRU', 'TOLLGATE', 'SIGN_OFF', 'COMPLETE']
-    phases.forEach(phase => {
+    KT_PHASES.forEach(phase => {
       const items = milestones.filter(m => m.phase === phase)
       if (items.length) grouped.push({ key: phase, items })
     })
@@ -171,6 +331,9 @@ export default function MilestonesPage() {
               <option value="tower">Group by Tower</option>
               <option value="phase">Group by Phase</option>
             </select>
+            {!isReadOnly && (
+              <Button onClick={() => setFormModal({ open: true, milestone: null })}>+ Add Milestone</Button>
+            )}
           </div>
         </div>
 
@@ -239,8 +402,10 @@ export default function MilestonesPage() {
                     <MilestoneRow
                       key={m.id}
                       m={m}
-                      canEdit={!isReadOnly && (session?.role === 'ADMIN' || session?.towerId === m.towerId)}
-                      onUpdate={(id, status) => mutation.mutate({ id, status })}
+                      canEdit={canEditMilestone(m)}
+                      onUpdate={(id, status) => statusMutation.mutate({ id, status })}
+                      onEdit={m => setFormModal({ open: true, milestone: m })}
+                      onDelete={m => setDeleteTarget(m)}
                     />
                   ))}
                 </div>
@@ -249,6 +414,36 @@ export default function MilestonesPage() {
           </div>
         )}
       </div>
+
+      {/* Form modal */}
+      {formModal.open && (
+        <MilestoneFormModal
+          milestone={formModal.milestone}
+          towers={towers}
+          defaultTowerId={session?.towerId}
+          onClose={() => setFormModal({ open: false, milestone: null })}
+          onSave={data => saveMutation.mutate(data)}
+          saving={saveMutation.isPending}
+        />
+      )}
+
+      {/* Delete confirm */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+            <h3 className="text-base font-semibold text-gray-900 mb-2">Delete milestone?</h3>
+            <p className="text-sm text-gray-600 mb-4">&ldquo;{deleteTarget.name}&rdquo; will be permanently removed.</p>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+              <Button
+                loading={deleteMutation.isPending}
+                onClick={() => deleteMutation.mutate(deleteTarget.id)}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >Delete</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   )
 }

@@ -20,7 +20,13 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const body = await request.json()
     const tower = await prisma.tower.update({
       where: { id },
-      data: { name: body.name, description: body.description },
+      data: {
+        ...(body.name !== undefined && { name: body.name }),
+        ...(body.description !== undefined && { description: body.description }),
+        ...(body.ktPhase !== undefined && { ktPhase: body.ktPhase }),
+        ...(body.twgLeadName !== undefined && { twgLeadName: body.twgLeadName || null }),
+        ...(body.tcsLeadName !== undefined && { tcsLeadName: body.tcsLeadName || null }),
+      },
     })
     await writeAudit({ userId: session.id, action: 'UPDATE', resource: 'tower', resourceId: id })
     return NextResponse.json({ data: { ...tower, createdAt: tower.createdAt.toISOString(), updatedAt: tower.updatedAt.toISOString() } })

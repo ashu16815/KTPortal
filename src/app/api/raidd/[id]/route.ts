@@ -31,6 +31,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         ...(body.notes !== undefined && { notes: body.notes }),
         ...(body.dueDate !== undefined && { dueDate: body.dueDate ? new Date(body.dueDate) : null }),
         ...(body.impact !== undefined && { impact: body.impact }),
+        ...(body.type !== undefined && { type: body.type }),
         ...(body.title !== undefined && { title: body.title }),
         ...(body.description !== undefined && { description: body.description }),
         ...((body.status === 'CLOSED' && !existing.closedAt) && { closedAt: new Date() }),

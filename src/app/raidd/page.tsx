@@ -4,11 +4,12 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { AppShell } from '@/components/layout/AppShell'
 import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { queryKeys } from '@/hooks/queryKeys'
 import { formatDate } from '@/lib/utils'
 import { useSession } from '@/hooks/useSession'
-import type { RaiddDTO, RaiddType, RaiddStatus } from '@/types'
+import type { RaiddDTO, RaiddType, RaiddStatus, TowerDTO } from '@/types'
 
 const TABS: { type: RaiddType | 'ALL'; label: string; color: string }[] = [
   { type: 'ALL', label: 'All', color: 'bg-gray-100 text-gray-700' },
@@ -37,7 +38,147 @@ const TYPE_ICON: Record<string, string> = {
   RISK: '⚠️', ASSUMPTION: '💡', ISSUE: '🔴', DEPENDENCY: '🔗', DECISION: '🔷',
 }
 
-function RaiddRow({ item, onStatusChange, canEdit }: { item: RaiddDTO; onStatusChange: (id: string, status: RaiddStatus) => void; canEdit: boolean }) {
+const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white'
+
+// ─── RAIDD Form Modal ─────────────────────────────────────────────────────────
+
+function RaiddFormModal({
+  item,
+  towers,
+  defaultTowerId,
+  onClose,
+  onSave,
+  saving,
+}: {
+  item: RaiddDTO | null
+  towers: TowerDTO[]
+  defaultTowerId: string | undefined
+  onClose: () => void
+  onSave: (data: Partial<RaiddDTO>) => void
+  saving: boolean
+}) {
+  const [form, setForm] = useState({
+    type: item?.type ?? 'RISK' as RaiddType,
+    title: item?.title ?? '',
+    description: item?.description ?? '',
+    impact: item?.impact ?? 'MEDIUM',
+    owner: item?.owner ?? '',
+    dueDate: item?.dueDate ? item.dueDate.slice(0, 10) : '',
+    mitigation: item?.mitigation ?? '',
+    notes: item?.notes ?? '',
+    towerId: item?.towerId ?? defaultTowerId ?? '',
+    status: item?.status ?? 'OPEN' as RaiddStatus,
+  })
+  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h3 className="text-base font-semibold text-gray-900">{item ? 'Edit RAIDD Item' : 'Add RAIDD Item'}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+        </div>
+        <div className="px-5 py-4 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
+              <select className={inputCls} value={form.type} onChange={e => set('type', e.target.value)}>
+                {(['RISK', 'ASSUMPTION', 'ISSUE', 'DEPENDENCY', 'DECISION'] as RaiddType[]).map(t => (
+                  <option key={t} value={t}>{TYPE_ICON[t]} {t}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Impact</label>
+              <select className={inputCls} value={form.impact} onChange={e => set('impact', e.target.value)}>
+                {['HIGH', 'MEDIUM', 'LOW'].map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Tower</label>
+            <select className={inputCls} value={form.towerId} onChange={e => set('towerId', e.target.value)}>
+              <option value="">— Programme-wide —</option>
+              {towers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Title *</label>
+            <input className={inputCls} value={form.title} onChange={e => set('title', e.target.value)} placeholder="Brief title" />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+            <textarea className={inputCls} rows={3} value={form.description} onChange={e => set('description', e.target.value)} placeholder="Detailed description" />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Owner</label>
+              <input className={inputCls} value={form.owner} onChange={e => set('owner', e.target.value)} placeholder="Owner name" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Due Date</label>
+              <input className={inputCls} type="date" value={form.dueDate} onChange={e => set('dueDate', e.target.value)} />
+            </div>
+          </div>
+
+          {(form.type === 'RISK' || form.type === 'ISSUE') && (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Mitigation / Response</label>
+              <textarea className={inputCls} rows={2} value={form.mitigation} onChange={e => set('mitigation', e.target.value)} placeholder="Planned response or mitigation actions" />
+            </div>
+          )}
+
+          {item && (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
+              <select className={inputCls} value={form.status} onChange={e => set('status', e.target.value)}>
+                {(['OPEN', 'IN_PROGRESS', 'ESCALATED', 'ACCEPTED', 'CLOSED'] as RaiddStatus[]).map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Notes</label>
+            <textarea className={inputCls} rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} placeholder="Additional notes" />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+            <Button variant="secondary" onClick={onClose}>Cancel</Button>
+            <Button loading={saving} onClick={() => onSave({
+              ...form,
+              towerId: form.towerId || null,
+              dueDate: form.dueDate || undefined,
+            } as Partial<RaiddDTO>)}>
+              {item ? 'Save changes' : 'Add item'}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── RAIDD Row ────────────────────────────────────────────────────────────────
+
+function RaiddRow({
+  item,
+  onStatusChange,
+  canEdit,
+  onEdit,
+  onDelete,
+}: {
+  item: RaiddDTO
+  onStatusChange: (id: string, status: RaiddStatus) => void
+  canEdit: boolean
+  onEdit: (item: RaiddDTO) => void
+  onDelete: (item: RaiddDTO) => void
+}) {
   const [expanded, setExpanded] = useState(false)
 
   return (
@@ -117,6 +258,12 @@ function RaiddRow({ item, onStatusChange, canEdit }: { item: RaiddDTO; onStatusC
               </div>
             </div>
           )}
+          {canEdit && (
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => onEdit(item)} className="text-xs text-blue-600 hover:underline">Edit item</button>
+              <button onClick={() => onDelete(item)} className="text-xs text-red-500 hover:underline">Delete</button>
+            </div>
+          )}
           <div className="text-xs text-gray-400">
             Raised {formatDate(item.createdAt)} · Updated {formatDate(item.updatedAt)}
           </div>
@@ -126,12 +273,17 @@ function RaiddRow({ item, onStatusChange, canEdit }: { item: RaiddDTO; onStatusC
   )
 }
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
 export default function RaiddPage() {
   const [activeTab, setActiveTab] = useState<RaiddType | 'ALL'>('ALL')
   const [statusFilter, setStatusFilter] = useState<string>('open')
+  const [formModal, setFormModal] = useState<{ open: boolean; item: RaiddDTO | null }>({ open: false, item: null })
+  const [deleteTarget, setDeleteTarget] = useState<RaiddDTO | null>(null)
   const queryClient = useQueryClient()
   const { session } = useSession()
   const isReadOnly = session?.role === 'EXEC'
+  const isAdmin = session?.role === 'ADMIN'
 
   const params: Record<string, string> = {}
   if (activeTab !== 'ALL') params.type = activeTab
@@ -147,7 +299,13 @@ export default function RaiddPage() {
     },
   })
 
-  const mutation = useMutation({
+  const { data: towersData } = useQuery<{ data: TowerDTO[] }>({
+    queryKey: queryKeys.towers(),
+    queryFn: async () => { const r = await fetch('/api/towers'); return r.json() },
+    enabled: !isReadOnly,
+  })
+
+  const statusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: RaiddStatus }) => {
       const res = await fetch(`/api/raidd/${id}`, {
         method: 'PATCH',
@@ -160,7 +318,42 @@ export default function RaiddPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['raidd'] }),
   })
 
+  const saveMutation = useMutation({
+    mutationFn: async (data: Partial<RaiddDTO>) => {
+      const isEdit = !!formModal.item
+      const url = isEdit ? `/api/raidd/${formModal.item!.id}` : '/api/raidd'
+      const method = isEdit ? 'PATCH' : 'POST'
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error((await res.json()).error?.message ?? 'Failed')
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['raidd'] })
+      setFormModal({ open: false, item: null })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/raidd/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to delete')
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['raidd'] })
+      setDeleteTarget(null)
+    },
+  })
+
+  const canEditItem = (item: RaiddDTO) =>
+    !isReadOnly && (isAdmin || session?.towerId === item.towerId || (!item.towerId && isAdmin))
+
   const items = data?.data ?? []
+  const towers = towersData?.data ?? []
   const counts = TABS.slice(1).reduce((acc, t) => {
     acc[t.type] = items.filter(i => i.type === t.type).length
     return acc
@@ -190,6 +383,9 @@ export default function RaiddPage() {
               <option value="open">Open / Active</option>
               <option value="all">All statuses</option>
             </select>
+            {!isReadOnly && (
+              <Button onClick={() => setFormModal({ open: true, item: null })}>+ Add Item</Button>
+            )}
           </div>
         </div>
 
@@ -230,13 +426,45 @@ export default function RaiddPage() {
               <RaiddRow
                 key={item.id}
                 item={item}
-                canEdit={!isReadOnly && (session?.role === 'ADMIN' || session?.towerId === item.towerId)}
-                onStatusChange={(id, status) => mutation.mutate({ id, status })}
+                canEdit={canEditItem(item)}
+                onStatusChange={(id, status) => statusMutation.mutate({ id, status })}
+                onEdit={i => setFormModal({ open: true, item: i })}
+                onDelete={i => setDeleteTarget(i)}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* Form modal */}
+      {formModal.open && (
+        <RaiddFormModal
+          item={formModal.item}
+          towers={towers}
+          defaultTowerId={session?.towerId}
+          onClose={() => setFormModal({ open: false, item: null })}
+          onSave={data => saveMutation.mutate(data)}
+          saving={saveMutation.isPending}
+        />
+      )}
+
+      {/* Delete confirm */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+            <h3 className="text-base font-semibold text-gray-900 mb-2">Delete RAIDD item?</h3>
+            <p className="text-sm text-gray-600 mb-4">&ldquo;{deleteTarget.title}&rdquo; will be permanently removed.</p>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setDeleteTarget(null)}>Cancel</Button>
+              <Button
+                loading={deleteMutation.isPending}
+                onClick={() => deleteMutation.mutate(deleteTarget.id)}
+                className="bg-red-600 hover:bg-red-700 text-white"
+              >Delete</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   )
 }

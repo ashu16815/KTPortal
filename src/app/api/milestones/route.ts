@@ -86,7 +86,7 @@ export async function PATCH(req: NextRequest) {
   try {
     const session = await requireSession()
     const body = await req.json()
-    const { id, status, actualDate, notes } = body
+    const { id, status, actualDate, notes, name, phase, plannedDate } = body
 
     if (!id) return NextResponse.json({ error: { code: 'VALIDATION', message: 'id required' } }, { status: 400 })
     if (session.role === 'EXEC') return authError('Exec users have read-only access', 403)
@@ -101,6 +101,9 @@ export async function PATCH(req: NextRequest) {
     const updated = await prisma.milestone.update({
       where: { id },
       data: {
+        ...(name !== undefined && { name }),
+        ...(phase !== undefined && { phase }),
+        ...(plannedDate !== undefined && { plannedDate: new Date(plannedDate) }),
         ...(status !== undefined && { status }),
         ...(actualDate !== undefined && { actualDate: actualDate ? new Date(actualDate) : null }),
         ...(notes !== undefined && { notes }),

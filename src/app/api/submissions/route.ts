@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireSession } from '@/lib/auth'
+import { requireSession, canWriteTower } from '@/lib/auth'
 import { calculateScore } from '@/lib/scoring'
 import { getAIProvider } from '@/lib/ai'
 import { writeAudit } from '@/lib/audit'
@@ -43,7 +43,38 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await requireSession()
+
+    // Exec users are read-only
+    if (session.role === 'EXEC') {
+      return NextResponse.json({ error: { code: 'FORBIDDEN', message: 'Executive accounts cannot submit' } }, { status: 403 })
+    }
+
     const body = await request.json()
+
+    // Required field validation
+    const towerId = (body.towerId ?? '').trim()
+    if (!towerId) {
+      return NextResponse.json({ error: { code: 'VALIDATION', message: 'towerId is required' } }, { status: 400 })
+    }
+
+    const scoreFields = ['progressScore', 'coverageScore', 'confidenceScore', 'operationalScore', 'qualityScore'] as const
+    for (const field of scoreFields) {
+      const v = Number(body[field])
+      if (!Number.isFinite(v) || v < 0 || v > 100) {
+        return NextResponse.json({ error: { code: 'VALIDATION', message: `${field} must be 0–100` } }, { status: 400 })
+      }
+    }
+
+    // Tower ownership: leads can only submit for their own tower
+    if (!canWriteTower(session, towerId)) {
+      return NextResponse.json({ error: { code: 'FORBIDDEN', message: 'You can only submit for your assigned tower' } }, { status: 403 })
+    }
+
+    // Verify user exists in DB (stub-session users won't have a DB record)
+    const dbUser = await prisma.user.findUnique({ where: { id: session.id }, select: { id: true } })
+    if (!dbUser) {
+      return NextResponse.json({ error: { code: 'UNAUTHENTICATED', message: 'Sign in with a real account to submit' } }, { status: 401 })
+    }
 
     const weekEnding = normaliseWeekEnding(body.weekEnding ?? new Date())
 
