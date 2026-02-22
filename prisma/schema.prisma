@@ -7,19 +7,45 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Tower {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+// ─── PROGRAMME STRUCTURE ──────────────────────────────────────────────────────
 
-  tracks      Track[]
-  users       User[]
-  submissions WeeklySubmission[]
-  actions     Action[]
-  artefacts   Artefact[]
-  scoreHistory HealthScoreHistory[]
+model TowerGroup {
+  id                   String   @id @default(cuid())
+  groupNumber          Int      // 1 | 2 | 3
+  name                 String   // "Group 1"
+  transitionPartnerTWG String?  // "Russell Charman"
+  transitionManagerTCS String?  // "Chandra Subramanian / Kapil Deo"
+  description          String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  towers               Tower[]
+}
+
+model Tower {
+  id             String    @id @default(cuid())
+  name           String
+  description    String?
+  groupId        String?
+  ktPhase        String    @default("KT")  // PLAN | KT | VOLUME_RAMP_UP | SS | PS | OJT | VRU | COMPLETE
+  ktModel        String?   // TTT | TTC | BOTH
+  twgLeadName    String?
+  tcsLeadName    String?
+  phaseStartDate DateTime?
+  phaseEndDate   DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  group          TowerGroup?          @relation(fields: [groupId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tracks         Track[]
+  users          User[]
+  submissions    WeeklySubmission[]
+  actions        Action[]
+  artefacts      Artefact[]
+  scoreHistory   HealthScoreHistory[]
+  raidds         RaiddLog[]
+  milestones     Milestone[]
+  dailyUpdates   DailyKTUpdate[]
 }
 
 model Track {
@@ -29,56 +55,60 @@ model Track {
   description String?
   createdAt   DateTime @default(now())
 
-  tower       Tower    @relation(fields: [towerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tower          Tower          @relation(fields: [towerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   pulseResponses PulseResponse[]
 }
 
 model User {
-  id       String   @id @default(cuid())
-  email    String   @unique
-  name     String
-  role     String   // ADMIN | EXEC | TWG_LEAD | TCS_LEAD | TWG_OWNER | TCS_OWNER
-  towerId  String?
-  org      String   // TWG | TCS | ADMIN
-  createdAt DateTime @default(now())
+  id             String   @id @default(cuid())
+  email          String   @unique
+  name           String
+  role           String   // ADMIN | EXEC | TWG_LEAD | TCS_LEAD | TWG_OWNER | TCS_OWNER
+  towerId        String?
+  org            String   // TWG | TCS | ADMIN
+  jobTitle       String?
+  transitionRole String?  // TRANSITION_PARTNER | TRANSITION_MANAGER | TOWER_LEAD | PROCESS_LEAD | SME | PROJECT_LEAD | DELIVERY_PARTNER
+  createdAt      DateTime @default(now())
 
-  tower    Tower?   @relation(fields: [towerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  submissions WeeklySubmission[]
-  actions  Action[] @relation("ActionOwner")
-  auditLogs AuditLog[]
+  tower        Tower?           @relation(fields: [towerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  submissions  WeeklySubmission[]
+  actions      Action[]         @relation("ActionOwner")
+  auditLogs    AuditLog[]
+  dailyUpdates DailyKTUpdate[]
 }
 
+// ─── WEEKLY HEALTH SCORING ────────────────────────────────────────────────────
+
 model WeeklySubmission {
-  id              String   @id @default(cuid())
-  towerId         String
-  userId          String
-  org             String   // TWG | TCS
-  weekEnding      DateTime
-  status          String   @default("DRAFT") // DRAFT | SUBMITTED | APPROVED
+  id               String   @id @default(cuid())
+  towerId          String
+  userId           String
+  org              String   // TWG | TCS
+  weekEnding       DateTime
+  status           String   @default("DRAFT") // DRAFT | SUBMITTED | APPROVED
 
-  // Score components (0-100 each)
-  progressScore   Int
-  coverageScore   Int
-  confidenceScore Int
+  progressScore    Int
+  coverageScore    Int
+  confidenceScore  Int
   operationalScore Int
-  qualityScore    Int
-  totalScore      Int
+  qualityScore     Int
+  totalScore       Int
 
-  ragStatus       String   // RED | AMBER | GREEN
-  narrative       String?
-  risks           String?  // JSON string
-  blockers        String?  // JSON string
-  evidenceLinks   String?  // JSON string
+  ragStatus        String   // RED | AMBER | GREEN
+  narrative        String?
+  risks            String?  // JSON string
+  blockers         String?  // JSON string
+  evidenceLinks    String?  // JSON string
   hasActiveBlocker Boolean  @default(false)
 
   aiSummary         String?
   aiSummaryApproved Boolean  @default(false)
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  tower       Tower    @relation(fields: [towerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  user        User     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tower          Tower          @relation(fields: [towerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user           User           @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   pulseResponses PulseResponse[]
 
   @@unique([towerId, weekEnding, org])
@@ -88,13 +118,15 @@ model PulseResponse {
   id           String   @id @default(cuid())
   submissionId String
   trackId      String
-  score        Int      // 0-100
+  score        Int
   comment      String?
   createdAt    DateTime @default(now())
 
-  submission   WeeklySubmission @relation(fields: [submissionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  track        Track    @relation(fields: [trackId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  submission WeeklySubmission @relation(fields: [submissionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  track      Track            @relation(fields: [trackId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
+
+// ─── ACTIONS ──────────────────────────────────────────────────────────────────
 
 model Action {
   id          String    @id @default(cuid())
@@ -109,75 +141,148 @@ model Action {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  tower       Tower     @relation(fields: [towerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  owner       User      @relation("ActionOwner", fields: [ownerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tower Tower @relation(fields: [towerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  owner User  @relation("ActionOwner", fields: [ownerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
+
+// ─── ARTEFACTS ────────────────────────────────────────────────────────────────
 
 model Artefact {
-  id          String   @id @default(cuid())
-  towerId     String
-  name        String
-  type        String   // RUNBOOK | ARCHITECTURE | TEST_PLAN | TRAINING | HANDOVER | OTHER
-  blobUrl     String?
-  uploaded    Boolean  @default(false)
-  uploadedAt  DateTime?
-  createdAt   DateTime @default(now())
+  id         String    @id @default(cuid())
+  towerId    String
+  name       String
+  type       String    // RUNBOOK | ARCHITECTURE | TEST_PLAN | TRAINING | HANDOVER | SOP | PROCESS_MAP | OTHER
+  blobUrl    String?
+  uploaded   Boolean   @default(false)
+  uploadedAt DateTime?
+  createdAt  DateTime  @default(now())
 
-  tower       Tower    @relation(fields: [towerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  tower Tower @relation(fields: [towerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
+// ─── RAIDD LOG (Risks, Assumptions, Issues, Dependencies, Decisions) ──────────
+
+model RaiddLog {
+  id          String    @id @default(cuid())
+  towerId     String?
+  type        String    // RISK | ASSUMPTION | ISSUE | DEPENDENCY | DECISION
+  title       String
+  description String?
+  impact      String?   @default("MEDIUM") // HIGH | MEDIUM | LOW
+  probability String?   // HIGH | MEDIUM | LOW (risks only)
+  status      String    @default("OPEN")   // OPEN | IN_PROGRESS | CLOSED | ESCALATED | ACCEPTED
+  owner       String?
+  raisedBy    String?
+  dueDate     DateTime?
+  closedAt    DateTime?
+  mitigation  String?
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tower Tower? @relation(fields: [towerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+// ─── MILESTONES / PHASE GATES ─────────────────────────────────────────────────
+
+model Milestone {
+  id          String    @id @default(cuid())
+  towerId     String
+  name        String
+  phase       String    // PLAN | KT | SS | PS | OJT | VRU | TOLLGATE | SIGN_OFF | COMPLETE
+  plannedDate DateTime
+  actualDate  DateTime?
+  status      String    @default("PENDING") // PENDING | IN_PROGRESS | COMPLETE | AT_RISK | DELAYED | BLOCKED
+  notes       String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tower Tower @relation(fields: [towerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+// ─── DAILY KT CHECK-IN ────────────────────────────────────────────────────────
+
+model DailyKTUpdate {
+  id              String   @id @default(cuid())
+  towerId         String
+  userId          String
+  updateDate      DateTime
+  sessionHeld     Boolean  @default(true)
+  sessionType     String?  // PLAYBACK | REMOTE_KT | QA | SHADOWING | SOP_CREATION | WALKTHROUGH
+  topicsCovered   String?
+  sessionNotes    String?
+  blockers        String?
+  sopProgress     Int?     // % SOPs complete (0-100)
+  plannedNext     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tower Tower @relation(fields: [towerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user  User  @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([towerId, userId, updateDate])
+}
+
+// ─── DECISIONS (legacy — superseded by RaiddLog type=DECISION) ───────────────
+
 model Decision {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   towerId     String?
   title       String
   description String?
-  status      String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  status      String    @default("PENDING") // PENDING | APPROVED | REJECTED
   decidedAt   DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
-model HealthScoreHistory {
-  id          String   @id @default(cuid())
-  towerId     String
-  org         String   // TWG | TCS
-  weekEnding  DateTime
-  totalScore  Int
-  ragStatus   String
-  progressScore   Int
-  coverageScore   Int
-  confidenceScore Int
-  operationalScore Int
-  qualityScore    Int
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+// ─── HEALTH SCORE HISTORY ─────────────────────────────────────────────────────
 
-  tower       Tower    @relation(fields: [towerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+model HealthScoreHistory {
+  id               String   @id @default(cuid())
+  towerId          String
+  org              String
+  weekEnding       DateTime
+  totalScore       Int
+  ragStatus        String
+  progressScore    Int
+  coverageScore    Int
+  confidenceScore  Int
+  operationalScore Int
+  qualityScore     Int
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tower Tower @relation(fields: [towerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@unique([towerId, weekEnding, org])
 }
 
+// ─── SCORING WEIGHTS ──────────────────────────────────────────────────────────
+
 model ScoringWeights {
-  id               String  @id @default(cuid())
-  progressWeight   Float   @default(0.25)
-  coverageWeight   Float   @default(0.25)
-  confidenceWeight Float   @default(0.20)
-  operationalWeight Float  @default(0.15)
-  qualityWeight    Float   @default(0.15)
-  greenThreshold   Int     @default(75)
-  amberThreshold   Int     @default(50)
-  varianceThreshold Int    @default(20)
-  updatedAt        DateTime @updatedAt
+  id                String  @id @default(cuid())
+  progressWeight    Float   @default(0.25)
+  coverageWeight    Float   @default(0.25)
+  confidenceWeight  Float   @default(0.20)
+  operationalWeight Float   @default(0.15)
+  qualityWeight     Float   @default(0.15)
+  greenThreshold    Int     @default(75)
+  amberThreshold    Int     @default(50)
+  varianceThreshold Int     @default(20)
+  updatedAt         DateTime @updatedAt
 }
+
+// ─── AUDIT LOG ────────────────────────────────────────────────────────────────
 
 model AuditLog {
   id         String   @id @default(cuid())
   userId     String?
   action     String   // CREATE | UPDATE | DELETE | LOGIN
-  resource   String   // tower | submission | action | user | weights
+  resource   String
   resourceId String?
-  details    String?  // JSON string
+  details    String?
   createdAt  DateTime @default(now())
 
-  user       User?    @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user User? @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }

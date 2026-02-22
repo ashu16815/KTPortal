@@ -4,8 +4,12 @@ export type SubmissionStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED'
 export type ActionStatus = 'OPEN' | 'IN_PROGRESS' | 'DONE' | 'OVERDUE'
 export type ActionPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
 export type UserRole = 'ADMIN' | 'EXEC' | 'TWG_LEAD' | 'TCS_LEAD' | 'TWG_OWNER' | 'TCS_OWNER'
-export type ArtefactType = 'RUNBOOK' | 'ARCHITECTURE' | 'TEST_PLAN' | 'TRAINING' | 'HANDOVER' | 'OTHER'
+export type ArtefactType = 'RUNBOOK' | 'ARCHITECTURE' | 'TEST_PLAN' | 'TRAINING' | 'HANDOVER' | 'SOP' | 'PROCESS_MAP' | 'OTHER'
 export type DecisionStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
+export type KTPhase = 'PLAN' | 'KT' | 'VOLUME_RAMP_UP' | 'SS' | 'PS' | 'OJT' | 'VRU' | 'COMPLETE'
+export type RaiddType = 'RISK' | 'ASSUMPTION' | 'ISSUE' | 'DEPENDENCY' | 'DECISION'
+export type RaiddStatus = 'OPEN' | 'IN_PROGRESS' | 'CLOSED' | 'ESCALATED' | 'ACCEPTED'
+export type MilestoneStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETE' | 'AT_RISK' | 'DELAYED' | 'BLOCKED'
 
 export interface SessionUser {
   id: string
@@ -16,10 +20,26 @@ export interface SessionUser {
   towerId?: string
 }
 
+export interface TowerGroupDTO {
+  id: string
+  groupNumber: number
+  name: string
+  transitionPartnerTWG?: string
+  transitionManagerTCS?: string
+  description?: string
+}
+
 export interface TowerDTO {
   id: string
   name: string
   description?: string
+  groupId?: string
+  groupName?: string
+  groupNumber?: number
+  ktPhase?: KTPhase
+  ktModel?: string
+  twgLeadName?: string
+  tcsLeadName?: string
   createdAt: string
 }
 
@@ -37,6 +57,8 @@ export interface UserDTO {
   role: UserRole
   org: string
   towerId?: string
+  jobTitle?: string
+  transitionRole?: string
 }
 
 export interface WeeklySubmissionDTO {
@@ -98,6 +120,54 @@ export interface DecisionDTO {
   createdAt: string
 }
 
+export interface RaiddDTO {
+  id: string
+  towerId?: string
+  towerName?: string
+  type: RaiddType
+  title: string
+  description?: string
+  impact?: string
+  probability?: string
+  status: RaiddStatus
+  owner?: string
+  raisedBy?: string
+  dueDate?: string
+  closedAt?: string
+  mitigation?: string
+  notes?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface MilestoneDTO {
+  id: string
+  towerId: string
+  towerName?: string
+  name: string
+  phase: string
+  plannedDate: string
+  actualDate?: string
+  status: MilestoneStatus
+  notes?: string
+}
+
+export interface DailyKTUpdateDTO {
+  id: string
+  towerId: string
+  towerName?: string
+  userId: string
+  userName?: string
+  updateDate: string
+  sessionHeld: boolean
+  sessionType?: string
+  topicsCovered?: string
+  sessionNotes?: string
+  blockers?: string
+  sopProgress?: number
+  plannedNext?: string
+}
+
 export interface HealthScoreHistoryDTO {
   id: string
   towerId: string
@@ -148,10 +218,20 @@ export interface TowerHealthSummary {
   trend: HealthScoreHistoryDTO[]
   overdueActions: number
   pendingDecisions: number
-  artefactCoverage: number // 0-1
+  artefactCoverage: number
+}
+
+export interface GroupSummary {
+  group: TowerGroupDTO
+  towers: TowerHealthSummary[]
+  ragCounts: { RED: number; AMBER: number; GREEN: number }
+  overdueActions: number
+  atRiskMilestones: number
+  openRaidds: number
 }
 
 export interface ExecDashboardPayload {
+  groups: GroupSummary[]
   towers: TowerHealthSummary[]
   totalSubmissions: number
   weekEnding: string
@@ -167,6 +247,8 @@ export interface TowerDashboardPayload {
   actions: ActionDTO[]
   artefacts: ArtefactDTO[]
   pendingDecisions: DecisionDTO[]
+  raidds: RaiddDTO[]
+  milestones: MilestoneDTO[]
   weekEnding: string
 }
 
