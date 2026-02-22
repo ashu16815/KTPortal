@@ -1,0 +1,183 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+}
+
+model Tower {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tracks      Track[]
+  users       User[]
+  submissions WeeklySubmission[]
+  actions     Action[]
+  artefacts   Artefact[]
+  scoreHistory HealthScoreHistory[]
+}
+
+model Track {
+  id          String   @id @default(cuid())
+  towerId     String
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+
+  tower       Tower    @relation(fields: [towerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  pulseResponses PulseResponse[]
+}
+
+model User {
+  id       String   @id @default(cuid())
+  email    String   @unique
+  name     String
+  role     String   // ADMIN | EXEC | TWG_LEAD | TCS_LEAD | TWG_OWNER | TCS_OWNER
+  towerId  String?
+  org      String   // TWG | TCS | ADMIN
+  createdAt DateTime @default(now())
+
+  tower    Tower?   @relation(fields: [towerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  submissions WeeklySubmission[]
+  actions  Action[] @relation("ActionOwner")
+  auditLogs AuditLog[]
+}
+
+model WeeklySubmission {
+  id              String   @id @default(cuid())
+  towerId         String
+  userId          String
+  org             String   // TWG | TCS
+  weekEnding      DateTime
+  status          String   @default("DRAFT") // DRAFT | SUBMITTED | APPROVED
+
+  // Score components (0-100 each)
+  progressScore   Int
+  coverageScore   Int
+  confidenceScore Int
+  operationalScore Int
+  qualityScore    Int
+  totalScore      Int
+
+  ragStatus       String   // RED | AMBER | GREEN
+  narrative       String?
+  risks           String?  // JSON string
+  blockers        String?  // JSON string
+  evidenceLinks   String?  // JSON string
+  hasActiveBlocker Boolean  @default(false)
+
+  aiSummary         String?
+  aiSummaryApproved Boolean  @default(false)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tower       Tower    @relation(fields: [towerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user        User     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  pulseResponses PulseResponse[]
+
+  @@unique([towerId, weekEnding, org])
+}
+
+model PulseResponse {
+  id           String   @id @default(cuid())
+  submissionId String
+  trackId      String
+  score        Int      // 0-100
+  comment      String?
+  createdAt    DateTime @default(now())
+
+  submission   WeeklySubmission @relation(fields: [submissionId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  track        Track    @relation(fields: [trackId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model Action {
+  id          String    @id @default(cuid())
+  towerId     String
+  ownerId     String
+  title       String
+  description String?
+  status      String    @default("OPEN") // OPEN | IN_PROGRESS | DONE | OVERDUE
+  priority    String    @default("MEDIUM") // LOW | MEDIUM | HIGH | CRITICAL
+  dueDate     DateTime?
+  resolvedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  tower       Tower     @relation(fields: [towerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  owner       User      @relation("ActionOwner", fields: [ownerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model Artefact {
+  id          String   @id @default(cuid())
+  towerId     String
+  name        String
+  type        String   // RUNBOOK | ARCHITECTURE | TEST_PLAN | TRAINING | HANDOVER | OTHER
+  blobUrl     String?
+  uploaded    Boolean  @default(false)
+  uploadedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  tower       Tower    @relation(fields: [towerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model Decision {
+  id          String   @id @default(cuid())
+  towerId     String?
+  title       String
+  description String?
+  status      String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  decidedAt   DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model HealthScoreHistory {
+  id          String   @id @default(cuid())
+  towerId     String
+  org         String   // TWG | TCS
+  weekEnding  DateTime
+  totalScore  Int
+  ragStatus   String
+  progressScore   Int
+  coverageScore   Int
+  confidenceScore Int
+  operationalScore Int
+  qualityScore    Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tower       Tower    @relation(fields: [towerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([towerId, weekEnding, org])
+}
+
+model ScoringWeights {
+  id               String  @id @default(cuid())
+  progressWeight   Float   @default(0.25)
+  coverageWeight   Float   @default(0.25)
+  confidenceWeight Float   @default(0.20)
+  operationalWeight Float  @default(0.15)
+  qualityWeight    Float   @default(0.15)
+  greenThreshold   Int     @default(75)
+  amberThreshold   Int     @default(50)
+  varianceThreshold Int    @default(20)
+  updatedAt        DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String   // CREATE | UPDATE | DELETE | LOGIN
+  resource   String   // tower | submission | action | user | weights
+  resourceId String?
+  details    String?  // JSON string
+  createdAt  DateTime @default(now())
+
+  user       User?    @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}

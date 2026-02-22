@@ -1,0 +1,16 @@
+export const queryKeys = {
+  towers: () => ['towers'] as const,
+  tower: (id: string) => ['towers', id] as const,
+  tracks: (towerId: string) => ['tracks', towerId] as const,
+  users: () => ['users'] as const,
+  submissions: (params?: Record<string, string>) => ['submissions', params] as const,
+  submission: (id: string) => ['submissions', id] as const,
+  compare: (towerId: string, weekEnding: string) => ['compare', towerId, weekEnding] as const,
+  actions: (params?: Record<string, string>) => ['actions', params] as const,
+  action: (id: string) => ['actions', id] as const,
+  execDashboard: (weekEnding?: string) => ['dashboard', 'exec', weekEnding] as const,
+  towerDashboard: (towerId: string, weekEnding?: string) => ['dashboard', 'tower', towerId, weekEnding] as const,
+  weights: () => ['weights'] as const,
+  audit: (page?: number) => ['audit', page] as const,
+  pulse: (submissionId?: string) => ['pulse', submissionId] as const,
+}
