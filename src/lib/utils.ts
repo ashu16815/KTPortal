@@ -1,13 +1,14 @@
 import type { RAGStatus } from '@/types'
 
-// Normalise any date to the Friday of its ISO week
+// Normalise any date to the most-recent Friday at UTC midnight (the week-ending date).
+// Uses UTC day to stay consistent with dates stored as new Date('YYYY-MM-DD') (UTC midnight).
+// Mon–Fri UTC → advance to this Friday; Sat UTC → back 1; Sun UTC → back 2.
 export function normaliseWeekEnding(date: Date | string): Date {
   const d = typeof date === 'string' ? new Date(date) : new Date(date)
-  // 0=Sun,1=Mon,...,5=Fri,6=Sat
-  const day = d.getDay()
-  const diff = day <= 5 ? 5 - day : 6 // if Saturday, go forward 6 to next Friday
-  d.setDate(d.getDate() + diff)
-  d.setHours(0, 0, 0, 0)
+  const day = d.getUTCDay() // 0=Sun,1=Mon,...,5=Fri,6=Sat
+  const diff = day === 6 ? -1 : day === 0 ? -2 : 5 - day
+  d.setUTCDate(d.getUTCDate() + diff)
+  d.setUTCHours(0, 0, 0, 0)
   return d
 }
 
