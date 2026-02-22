@@ -42,11 +42,11 @@ export default function LoginPage() {
     }
   }, [router])
 
-  // Try to load real users from DB
+  // Try to load real users from DB (public endpoint, no auth required)
   const { data: usersData } = useQuery<{ data: (User & { towerName?: string })[] }>({
     queryKey: ['users-login'],
     queryFn: async () => {
-      const res = await fetch('/api/admin/users')
+      const res = await fetch('/api/users')
       if (!res.ok) return { data: [] }
       return res.json()
     },

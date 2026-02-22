@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { useSession } from '@/hooks/useSession'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -207,7 +208,8 @@ const ROLE_COLOR: Record<string, string> = {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AdminPage() {
-  const { session } = useSession()
+  const { session, loading: sessionLoading } = useSession()
+  const router = useRouter()
   const [tab, setTab] = useState<'users' | 'towers'>('users')
   const [userModal, setUserModal] = useState<{ open: boolean; user: AdminUser | null }>({ open: false, user: null })
   const [towerModal, setTowerModal] = useState<{ open: boolean; tower: AdminTower | null }>({ open: false, tower: null })
@@ -215,7 +217,9 @@ export default function AdminPage() {
 
   const queryClient = useQueryClient()
 
-  // ── Queries ──
+  // ── Queries — only fire once session is confirmed ──
+  const queryEnabled = !sessionLoading && !!session && session.role === 'ADMIN'
+
   const { data: usersData, isLoading: usersLoading, error: usersError } = useQuery({
     queryKey: ['admin-users'],
     queryFn: async () => {
@@ -223,6 +227,7 @@ export default function AdminPage() {
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err?.error?.message ?? `HTTP ${res.status}`) }
       return res.json()
     },
+    enabled: queryEnabled,
     retry: false,
   })
 
@@ -233,6 +238,7 @@ export default function AdminPage() {
       if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err?.error?.message ?? `HTTP ${res.status}`) }
       return res.json()
     },
+    enabled: queryEnabled,
     retry: false,
   })
 
@@ -294,12 +300,23 @@ export default function AdminPage() {
 
   const users: AdminUser[] = usersData?.data ?? []
   const towers: AdminTower[] = towersData?.data ?? []
-  const isLoading = usersLoading || towersLoading
-  const dbUnavailable = !isLoading && (!!usersError || !!towersError)
+  const isLoading = (usersLoading || towersLoading) && queryEnabled
+  const apiError = usersError || towersError
 
-  if (session && session.role !== 'ADMIN') {
-    return <AppShell><div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">Admin access required.</div></AppShell>
+  // Wait for session to load
+  if (sessionLoading) return <AppShell><LoadingSpinner /></AppShell>
+
+  // Not logged in → redirect to login
+  if (!session) {
+    router.replace('/login')
+    return <AppShell><LoadingSpinner /></AppShell>
   }
+
+  // Not admin → redirect to dashboard
+  if (session.role !== 'ADMIN') {
+    return <AppShell><div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700">Admin access required. You are logged in as {session.role}.</div></AppShell>
+  }
+
   if (isLoading) return <AppShell><LoadingSpinner /></AppShell>
 
   const handleUserSave = (data: Partial<AdminUser>) => {
@@ -332,11 +349,18 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* DB unavailable banner */}
-        {dbUnavailable && (
-          <Card className="border-amber-200 bg-amber-50">
-            <p className="text-sm font-medium text-amber-900 mb-1">Database not connected</p>
-            <p className="text-sm text-amber-800">{(usersError || towersError)?.message}</p>
+        {/* Error banner */}
+        {apiError && (
+          <Card className={apiError.message.toLowerCase().includes('auth') || apiError.message.includes('401') || apiError.message.includes('Login') ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'}>
+            <p className="text-sm font-medium mb-1" style={{ color: apiError.message.toLowerCase().includes('auth') || apiError.message.includes('401') || apiError.message.includes('Login') ? '#7f1d1d' : '#78350f' }}>
+              {apiError.message.toLowerCase().includes('auth') || apiError.message.includes('401') || apiError.message.includes('Login')
+                ? 'Session expired — please sign in again'
+                : 'Database not connected'}
+            </p>
+            <p className="text-sm" style={{ color: '#92400e' }}>{apiError.message}</p>
+            {(apiError.message.toLowerCase().includes('auth') || apiError.message.includes('401') || apiError.message.includes('Login')) && (
+              <button onClick={() => router.push('/login')} className="mt-2 text-sm text-red-700 underline font-medium">Go to login →</button>
+            )}
           </Card>
         )}
 

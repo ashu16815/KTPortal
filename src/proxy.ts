@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const PUBLIC_PATHS = ['/login', '/_next', '/api/auth', '/favicon.ico']
+const PUBLIC_PATHS = ['/login', '/_next', '/api/auth', '/api/users', '/favicon.ico']
 const COOKIE_NAME = 'kt_stub_session'
 
 export function proxy(request: NextRequest) {
