@@ -74,9 +74,11 @@ export async function PATCH(request: NextRequest) {
       include: { tower: { include: { submissions: true } } }
     })
 
-    for (const h of allHistory) {
+    type HistoryRow = (typeof allHistory)[number]
+    for (const h of allHistory as HistoryRow[]) {
+      type SubmissionRow = (typeof h.tower.submissions)[number]
       const sub = h.tower.submissions.find(
-        s => s.org === h.org && s.weekEnding.getTime() === h.weekEnding.getTime()
+        (s: SubmissionRow) => s.org === h.org && s.weekEnding.getTime() === h.weekEnding.getTime()
       )
       if (!sub) continue
       const { totalScore, ragStatus } = calculateScore({
