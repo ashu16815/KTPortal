@@ -105,8 +105,8 @@ function CompareContent() {
               <div className="p-2">
                 {payload.twg ? (
                   COMPARE_FIELDS.map(f => {
-                    const val = (payload.twg as Record<string, unknown>)?.[f.key]
-                    const tcsVal = (payload.tcs as Record<string, unknown>)?.[f.key]
+                    const val = (payload.twg as unknown as Record<string, unknown>)?.[f.key]
+                    const tcsVal = (payload.tcs as unknown as Record<string, unknown>)?.[f.key]
                     const differs = payload.tcs && String(val) !== String(tcsVal) && f.key !== 'ragStatus'
                     return (
                       <div key={f.key} className={`h-11 flex items-center px-2 text-sm rounded-lg ${differs ? 'bg-orange-50' : ''}`}>
@@ -130,8 +130,8 @@ function CompareContent() {
               <div className="p-2">
                 {payload.tcs ? (
                   COMPARE_FIELDS.map(f => {
-                    const val = (payload.tcs as Record<string, unknown>)?.[f.key]
-                    const twgVal = (payload.twg as Record<string, unknown>)?.[f.key]
+                    const val = (payload.tcs as unknown as Record<string, unknown>)?.[f.key]
+                    const twgVal = (payload.twg as unknown as Record<string, unknown>)?.[f.key]
                     const differs = payload.twg && String(val) !== String(twgVal) && f.key !== 'ragStatus'
                     return (
                       <div key={f.key} className={`h-11 flex items-center px-2 text-sm rounded-lg ${differs ? 'bg-orange-50' : ''}`}>

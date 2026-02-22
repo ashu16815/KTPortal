@@ -194,7 +194,7 @@ async function main() {
         blockers: JSON.stringify(params.blockers ?? []),
         hasActiveBlocker: params.hasActiveBlocker ?? false,
         aiSummary: `[Seed] KT status for ${params.org}: Overall health ${ragStatus} (${totalScore}/100). ${params.narrative?.slice(0, 100) ?? ''}`,
-        aiSummaryApproved: weeksAgo > 2,
+        aiSummaryApproved: params.weeksAgo > 2,
       },
       update: {
         totalScore,

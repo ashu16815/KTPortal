@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, type Resolver } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -32,7 +32,19 @@ const schema = z.object({
   evidenceLinks: z.string().optional(),
 })
 
-type FormData = z.infer<typeof schema>
+type FormData = {
+  towerId: string
+  progressScore: number
+  coverageScore: number
+  confidenceScore: number
+  operationalScore: number
+  qualityScore: number
+  hasActiveBlocker: boolean
+  narrative?: string
+  risks?: string
+  blockers?: string
+  evidenceLinks?: string
+}
 
 function ScoreSlider({ label, value, onChange, weight }: {
   label: string; value: number; onChange: (v: number) => void; weight: number
@@ -76,7 +88,7 @@ function NewSubmissionForm() {
   const [aiSummary, setAiSummary] = useState('')
 
   const { register, handleSubmit, formState: { errors }, setValue, watch } = useForm<FormData>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as Resolver<FormData>,
     defaultValues: { towerId: defaultTowerId, ...scores, hasActiveBlocker: false },
   })
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createSessionCookie } from '@/lib/auth'
+import type { SessionUser } from '@/types'
 
 const COOKIE_NAME = 'kt_stub_session'
 
@@ -10,11 +11,11 @@ export async function POST(request: NextRequest) {
     const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user) return NextResponse.json({ error: { code: 'NOT_FOUND', message: 'User not found' } }, { status: 404 })
 
-    const session = {
+    const session: SessionUser = {
       id: user.id,
       email: user.email,
       name: user.name,
-      role: user.role,
+      role: user.role as SessionUser['role'],
       org: user.org,
       towerId: user.towerId ?? undefined,
     }
