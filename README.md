@@ -39,12 +39,15 @@ Use `.env.example` as the template.
    - `NEXTAUTH_SECRET`
    - `AZURE_OPENAI_KEY` / `AZURE_OPENAI_ENDPOINT` (if used)
    - `AZURE_OPENAI_DEPLOYMENT` (if used)
+   - `SCM_DO_BUILD_DURING_DEPLOYMENT=true`
+   - `ENABLE_ORYX_BUILD=true`
 3. Deploy from GitHub Actions using `.github/workflows/main_projectora.yml`.
 4. Initialize database:
    - Preferred: `npm run db:migrate:deploy`
    - Alternative: `npm run db:push`
 5. Optional initial data load:
    - `npm run db:seed`
+6. In Azure Web App stack settings, pin runtime to Node 20 LTS (match CI and tested runtime).
 
 ## Notes
 
