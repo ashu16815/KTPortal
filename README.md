@@ -1,36 +1,52 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# KT Portal (Project Aura)
 
-## Getting Started
+Next.js + Prisma (SQL Server) web application for weekly KT tracking across towers.
 
-First, run the development server:
+## Local development
 
 ```bash
+npm ci
+npm run db:push
+npm run db:seed
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Required environment variables
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Use `.env.example` as the template.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `DATABASE_URL` (SQL Server / Azure SQL)
+- `NEXTAUTH_SECRET`
+- `AZURE_OPENAI_KEY` (optional)
+- `AZURE_OPENAI_ENDPOINT` (optional)
+- `AZURE_OPENAI_DEPLOYMENT` (optional, default `gpt-4o`)
 
-## Learn More
+## Build and runtime scripts
 
-To learn more about Next.js, take a look at the following resources:
+- `npm run build` - Next.js production build
+- `npm run start` - production server
+- `npm run db:generate` - generate Prisma Client
+- `npm run db:migrate:deploy` - apply migrations in production
+- `npm run db:push` - push schema (use for non-migration workflows)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Azure Web App deployment checklist
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Create Azure resources:
+   - Azure Web App (Linux, Node 20 LTS)
+   - Azure SQL database
+2. Configure Web App application settings:
+   - `DATABASE_URL`
+   - `NEXTAUTH_SECRET`
+   - `AZURE_OPENAI_KEY` / `AZURE_OPENAI_ENDPOINT` (if used)
+   - `AZURE_OPENAI_DEPLOYMENT` (if used)
+3. Deploy from GitHub Actions using `.github/workflows/main_projectora.yml`.
+4. Initialize database:
+   - Preferred: `npm run db:migrate:deploy`
+   - Alternative: `npm run db:push`
+5. Optional initial data load:
+   - `npm run db:seed`
 
-## Deploy on Vercel
+## Notes
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Prisma Client generation is enforced via `postinstall` and `prebuild`.
+- The app currently uses a stub cookie-based auth flow for login and role routing.
