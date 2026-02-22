@@ -116,7 +116,7 @@ export default function LoginPage() {
         <div className="text-center mb-8">
           <div className="text-4xl mb-3">🏛️</div>
           <h1 className="text-3xl font-bold text-white">KT Portal</h1>
-          <p className="text-slate-400 mt-2">Project Aura — Knowledge Transfer</p>
+          <p className="text-slate-400 mt-2">Project Ora — Knowledge Transfer</p>
         </div>
 
         <Card className="shadow-xl">

@@ -1,0 +1,13 @@
+Dockerfile
+.dockerignore
+node_modules
+npm-debug.log*
+.next
+.next_backup_*
+.next_buildcache_*
+.git
+.gitignore
+.env*
+.claude
+coverage
+README.md

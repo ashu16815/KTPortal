@@ -3,7 +3,7 @@ import './globals.css'
 import { Providers } from '@/components/layout/Providers'
 
 export const metadata: Metadata = {
-  title: 'KT Portal — Project Aura',
+  title: 'KT Portal — Project Ora',
   description: 'Knowledge Transfer Portal for TWG and TCS',
 }
 

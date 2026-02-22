@@ -30,7 +30,7 @@ export function Sidebar({ session }: Props) {
     <aside className="w-56 bg-slate-900 text-white flex flex-col flex-shrink-0">
       <div className="p-4 border-b border-slate-700">
         <div className="font-bold text-lg">KT Portal</div>
-        <div className="text-xs text-slate-400">Project Aura</div>
+        <div className="text-xs text-slate-400">Project Ora</div>
       </div>
       <nav className="flex-1 p-2 space-y-1">
         {visible.map(item => (
