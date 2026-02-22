@@ -20,7 +20,8 @@ export async function GET() {
       orderBy: { name: 'asc' },
       include: { tower: { select: { name: true } } },
     })
-    return NextResponse.json({ data: users.map(u => ({ ...u, createdAt: u.createdAt.toISOString(), towerName: u.tower?.name })) })
+    type UserRow = (typeof users)[number]
+    return NextResponse.json({ data: users.map((u: UserRow) => ({ ...u, createdAt: u.createdAt.toISOString(), towerName: u.tower?.name })) })
   } catch (err) {
     const authResponse = handleAuthError(err)
     if (authResponse) return authResponse

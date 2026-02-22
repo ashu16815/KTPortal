@@ -20,7 +20,8 @@ export async function GET() {
       orderBy: { name: 'asc' },
       include: { tracks: true, _count: { select: { users: true, submissions: true } } },
     })
-    return NextResponse.json({ data: towers.map(t => ({ ...t, createdAt: t.createdAt.toISOString(), updatedAt: t.updatedAt.toISOString() })) })
+    type TowerRow = (typeof towers)[number]
+    return NextResponse.json({ data: towers.map((t: TowerRow) => ({ ...t, createdAt: t.createdAt.toISOString(), updatedAt: t.updatedAt.toISOString() })) })
   } catch (err) {
     return handleAuthError(err) ?? NextResponse.json({ error: { code: 'INTERNAL', message: 'Failed' } }, { status: 500 })
   }

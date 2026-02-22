@@ -13,8 +13,9 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: 'desc' },
     })
 
+    type PulseResponseRow = (typeof responses)[number]
     return NextResponse.json({
-      data: responses.map(r => ({ ...r, createdAt: r.createdAt.toISOString(), trackName: r.track.name, track: undefined }))
+      data: responses.map((r: PulseResponseRow) => ({ ...r, createdAt: r.createdAt.toISOString(), trackName: r.track.name, track: undefined }))
     })
   } catch {
     return NextResponse.json({ error: { code: 'INTERNAL', message: 'Failed to fetch pulse' } }, { status: 500 })

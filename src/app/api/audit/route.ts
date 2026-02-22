@@ -19,9 +19,10 @@ export async function GET(request: NextRequest) {
       prisma.auditLog.count(),
     ])
 
+    type AuditLogRow = (typeof logs)[number]
     return NextResponse.json({
       data: {
-        logs: logs.map(l => ({
+        logs: logs.map((l: AuditLogRow) => ({
           ...l,
           createdAt: l.createdAt.toISOString(),
           userName: l.user?.name,

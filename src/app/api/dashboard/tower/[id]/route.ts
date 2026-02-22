@@ -38,8 +38,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         tracks,
         latestTwg: mapSub(latestTwg),
         latestTcs: mapSub(latestTcs),
-        trend: trend.map(t => ({ ...t, weekEnding: t.weekEnding.toISOString(), createdAt: t.createdAt.toISOString(), updatedAt: t.updatedAt.toISOString() })),
-        actions: actions.map(a => ({
+        trend: trend.map((t: (typeof trend)[number]) => ({ ...t, weekEnding: t.weekEnding.toISOString(), createdAt: t.createdAt.toISOString(), updatedAt: t.updatedAt.toISOString() })),
+        actions: actions.map((a: (typeof actions)[number]) => ({
           ...a,
           ownerName: a.owner.name,
           towerName: a.tower.name,
@@ -50,8 +50,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
           owner: undefined,
           tower: undefined,
         })),
-        artefacts: artefacts.map(a => ({ ...a, uploadedAt: a.uploadedAt?.toISOString(), createdAt: a.createdAt.toISOString() })),
-        pendingDecisions: pendingDecisions.map(d => ({ ...d, decidedAt: d.decidedAt?.toISOString(), createdAt: d.createdAt.toISOString(), updatedAt: d.updatedAt.toISOString() })),
+        artefacts: artefacts.map((a: (typeof artefacts)[number]) => ({ ...a, uploadedAt: a.uploadedAt?.toISOString(), createdAt: a.createdAt.toISOString() })),
+        pendingDecisions: pendingDecisions.map((d: (typeof pendingDecisions)[number]) => ({ ...d, decidedAt: d.decidedAt?.toISOString(), createdAt: d.createdAt.toISOString(), updatedAt: d.updatedAt.toISOString() })),
         weekEnding: weekEnding.toISOString(),
       }
     })

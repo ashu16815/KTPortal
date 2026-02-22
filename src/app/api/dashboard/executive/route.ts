@@ -20,7 +20,8 @@ export async function GET() {
 
     const pendingDecisions = await prisma.decision.count({ where: { status: 'PENDING' } })
 
-    const towerSummaries = await Promise.all(towers.map(async tower => {
+    type TowerRow = (typeof towers)[number]
+    const towerSummaries = await Promise.all(towers.map(async (tower: TowerRow) => {
       const [twgScore, tcsScore, trend, overdueActions] = await Promise.all([
         prisma.healthScoreHistory.findUnique({
           where: { towerId_weekEnding_org: { towerId: tower.id, weekEnding, org: 'TWG' } },
@@ -40,7 +41,8 @@ export async function GET() {
       const varianceFlagged = variance !== undefined ? isVarianceFlagged(variance, varianceThreshold) : false
 
       const totalArtefacts = tower.artefacts.length
-      const uploadedArtefacts = tower.artefacts.filter(a => a.uploaded).length
+      type ArtefactRow = (typeof tower.artefacts)[number]
+      const uploadedArtefacts = tower.artefacts.filter((a: ArtefactRow) => a.uploaded).length
       const artefactCoverage = totalArtefacts > 0 ? uploadedArtefacts / totalArtefacts : 0
 
       const mapScore = (s: typeof twgScore) => s ? {
@@ -57,7 +59,7 @@ export async function GET() {
         variance,
         varianceFlagged,
         latestWeekEnding: weekEnding.toISOString(),
-        trend: trend.map(t => ({ ...t, weekEnding: t.weekEnding.toISOString(), createdAt: t.createdAt.toISOString(), updatedAt: t.updatedAt.toISOString() })),
+        trend: trend.map((t: (typeof trend)[number]) => ({ ...t, weekEnding: t.weekEnding.toISOString(), createdAt: t.createdAt.toISOString(), updatedAt: t.updatedAt.toISOString() })),
         overdueActions,
         pendingDecisions,
         artefactCoverage,

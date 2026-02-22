@@ -1,0 +1,13 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/admin/page": "app/admin/page.js",
+  "/api/admin/towers/route": "app/api/admin/towers/route.js",
+  "/api/admin/users/route": "app/api/admin/users/route.js",
+  "/api/dashboard/executive/route": "app/api/dashboard/executive/route.js",
+  "/api/dashboard/tower/[id]/route": "app/api/dashboard/tower/[id]/route.js",
+  "/api/towers/route": "app/api/towers/route.js",
+  "/dashboard/executive/page": "app/dashboard/executive/page.js",
+  "/dashboard/tower/[towerId]/page": "app/dashboard/tower/[towerId]/page.js",
+  "/submissions/compare/page": "app/submissions/compare/page.js",
+  "/submissions/new/page": "app/submissions/new/page.js"
+}

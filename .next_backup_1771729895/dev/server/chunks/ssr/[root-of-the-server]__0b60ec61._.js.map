@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 10, "column": 0}, "map": {"version":3,"sources":["file:///Users/323905/Documents/VibeCoding/KTPortal/src/components/layout/Providers.tsx"],"sourcesContent":["'use client'\n\nimport { QueryClient, QueryClientProvider } from '@tanstack/react-query'\nimport { ReactQueryDevtools } from '@tanstack/react-query-devtools'\nimport { useState } from 'react'\n\nexport function Providers({ children }: { children: React.ReactNode }) {\n  const [queryClient] = useState(() => new QueryClient({\n    defaultOptions: {\n      queries: {\n        staleTime: 1000 * 60 * 2,\n        retry: 1,\n      },\n    },\n  }))\n\n  return (\n    <QueryClientProvider client={queryClient}>\n      {children}\n      <ReactQueryDevtools initialIsOpen={false} />\n    </QueryClientProvider>\n  )\n}\n"],"names":[],"mappings":";;;;;AAEA;AAAA;AACA;AACA;AAJA;;;;;AAMO,SAAS,UAAU,EAAE,QAAQ,EAAiC;IACnE,MAAM,CAAC,YAAY,GAAG,IAAA,iNAAQ,EAAC,IAAM,IAAI,4LAAW,CAAC;YACnD,gBAAgB;gBACd,SAAS;oBACP,WAAW,OAAO,KAAK;oBACvB,OAAO;gBACT;YACF;QACF;IAEA,qBACE,8OAAC,6MAAmB;QAAC,QAAQ;;YAC1B;0BACD,8OAAC,0MAAkB;gBAAC,eAAe;;;;;;;;;;;;AAGzC"}}]
+}

@@ -23,7 +23,8 @@ export async function GET(request: NextRequest) {
       orderBy: { weekEnding: 'desc' },
     })
 
-    const mapped = submissions.map(s => ({
+    type SubmissionRow = (typeof submissions)[number]
+    const mapped = submissions.map((s: SubmissionRow) => ({
       ...s,
       weekEnding: s.weekEnding.toISOString(),
       createdAt: s.createdAt.toISOString(),
