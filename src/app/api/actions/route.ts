@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { requireSession } from '@/lib/auth'
 import { writeAudit } from '@/lib/audit'
@@ -23,7 +24,13 @@ export async function GET(request: NextRequest) {
       orderBy: [{ status: 'asc' }, { dueDate: 'asc' }],
     })
 
-    const mapped = actions.map(a => ({
+    type ActionRow = Prisma.ActionGetPayload<{
+      include: {
+        owner: { select: { name: true; email: true } }
+        tower: { select: { name: true } }
+      }
+    }>
+    const mapped = actions.map((a: ActionRow) => ({
       ...a,
       ownerName: a.owner.name,
       towerName: a.tower.name,
