@@ -10,8 +10,27 @@ import { PulseTrend } from '@/components/charts/PulseTrend'
 import { ComponentRadar } from '@/components/charts/ComponentRadar'
 import { queryKeys } from '@/hooks/queryKeys'
 import { formatDate, formatScore } from '@/lib/utils'
-import type { TowerDashboardPayload, ActionDTO, WeeklySubmissionDTO } from '@/types'
+import type { TowerDashboardPayload, ActionDTO, WeeklySubmissionDTO, RaiddDTO, MilestoneDTO } from '@/types'
 import Link from 'next/link'
+
+const PHASE_LABEL: Record<string, string> = {
+  PLAN: 'Planning', KT: 'KT', VOLUME_RAMP_UP: 'Vol. Ramp Up',
+  SS: 'Shadow Supervised', PS: 'Parallel Support', OJT: 'OJT', VRU: 'VRU', COMPLETE: 'Complete',
+}
+const PHASE_COLOR: Record<string, string> = {
+  PLAN: 'bg-gray-100 text-gray-600', KT: 'bg-blue-100 text-blue-700',
+  VOLUME_RAMP_UP: 'bg-purple-100 text-purple-700', SS: 'bg-amber-100 text-amber-700',
+  PS: 'bg-orange-100 text-orange-700', OJT: 'bg-teal-100 text-teal-700',
+  VRU: 'bg-indigo-100 text-indigo-700', COMPLETE: 'bg-green-100 text-green-700',
+}
+const MILESTONE_STATUS_COLOR: Record<string, string> = {
+  PENDING: 'text-gray-400', IN_PROGRESS: 'text-blue-500', COMPLETE: 'text-green-500',
+  AT_RISK: 'text-amber-500', DELAYED: 'text-orange-500', BLOCKED: 'text-red-500',
+}
+const MILESTONE_DOT: Record<string, string> = {
+  PENDING: 'bg-gray-300', IN_PROGRESS: 'bg-blue-400', COMPLETE: 'bg-green-500',
+  AT_RISK: 'bg-amber-400', DELAYED: 'bg-orange-500', BLOCKED: 'bg-red-500',
+}
 
 function ScoreBar({ label, value }: { label: string; value: number }) {
   const color = value >= 75 ? 'bg-green-500' : value >= 50 ? 'bg-amber-500' : 'bg-red-500'
@@ -86,7 +105,7 @@ export default function TowerDashboard({ params }: { params: Promise<{ towerId: 
     </AppShell>
   )
 
-  const { tower, latestTwg, latestTcs, trend, actions, artefacts, pendingDecisions } = payload
+  const { tower, latestTwg, latestTcs, trend, actions, artefacts, pendingDecisions, raidds, milestones } = payload
   const uploaded = artefacts.filter(a => a.uploaded).length
   const artefactPct = artefacts.length > 0 ? Math.round((uploaded / artefacts.length) * 100) : 0
 
@@ -94,12 +113,28 @@ export default function TowerDashboard({ params }: { params: Promise<{ towerId: 
     <AppShell>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{tower.name}</h1>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl font-bold text-gray-900">{tower.name}</h1>
+              {tower.ktPhase && (
+                <span className={`text-xs px-2 py-0.5 rounded font-medium ${PHASE_COLOR[tower.ktPhase] ?? 'bg-gray-100 text-gray-600'}`}>
+                  {PHASE_LABEL[tower.ktPhase] ?? tower.ktPhase}
+                </span>
+              )}
+              {tower.groupName && (
+                <span className="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600 font-medium">{tower.groupName}</span>
+              )}
+            </div>
             {tower.description && <p className="text-sm text-gray-500 mt-1">{tower.description}</p>}
+            {(tower.twgLeadName || tower.tcsLeadName) && (
+              <div className="flex gap-4 mt-1.5 text-xs text-gray-500">
+                {tower.twgLeadName && <span>TWG: <span className="font-medium text-gray-700">{tower.twgLeadName}</span></span>}
+                {tower.tcsLeadName && <span>TCS: <span className="font-medium text-gray-700">{tower.tcsLeadName}</span></span>}
+              </div>
+            )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-shrink-0">
             <Link
               href={`/submissions/new?towerId=${tower.id}`}
               className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors font-medium"
@@ -262,7 +297,7 @@ export default function TowerDashboard({ params }: { params: Promise<{ towerId: 
               <p className="text-sm text-gray-400">✓ No pending decisions</p>
             ) : (
               <ul className="space-y-3">
-                {pendingDecisions.map(d => (
+                {pendingDecisions.map((d: RaiddDTO) => (
                   <li key={d.id} className="text-sm border-b border-gray-50 pb-3 last:border-0">
                     <div className="font-medium text-gray-800 leading-tight">{d.title}</div>
                     {d.description && <div className="text-xs text-gray-400 mt-1 leading-relaxed">{d.description}</div>}
@@ -273,6 +308,69 @@ export default function TowerDashboard({ params }: { params: Promise<{ towerId: 
             )}
           </Card>
         </div>
+
+        {/* RAIDD summary */}
+        {raidds && raidds.length > 0 && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>RAIDD Items</CardTitle>
+                <Link href="/raidd" className="text-xs text-blue-600 hover:underline">View all →</Link>
+              </div>
+            </CardHeader>
+            <div className="space-y-2">
+              {raidds.slice(0, 6).map((r: RaiddDTO) => (
+                <div key={r.id} className="flex items-start gap-2 text-sm py-1.5 border-b border-gray-50 last:border-0">
+                  <span className="text-base flex-shrink-0 mt-0.5">
+                    {r.type === 'RISK' ? '⚠️' : r.type === 'ISSUE' ? '🔴' : r.type === 'DEPENDENCY' ? '🔗' : r.type === 'DECISION' ? '🔷' : '💡'}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-gray-800 leading-tight truncate">{r.title}</div>
+                    {r.mitigation && <div className="text-xs text-gray-400 mt-0.5 line-clamp-1">{r.mitigation}</div>}
+                  </div>
+                  <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 font-medium ${
+                    r.status === 'OPEN' ? 'bg-red-100 text-red-700' :
+                    r.status === 'ESCALATED' ? 'bg-orange-100 text-orange-700' :
+                    r.status === 'IN_PROGRESS' ? 'bg-blue-100 text-blue-700' :
+                    'bg-gray-100 text-gray-600'
+                  }`}>{r.status}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {/* Milestones */}
+        {milestones && milestones.length > 0 && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>Milestones</CardTitle>
+                <Link href="/milestones" className="text-xs text-blue-600 hover:underline">View all →</Link>
+              </div>
+            </CardHeader>
+            <div className="space-y-1">
+              {milestones.map((m: MilestoneDTO) => (
+                <div key={m.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+                  <div className={`w-2 h-2 rounded-full flex-shrink-0 ${MILESTONE_DOT[m.status] ?? 'bg-gray-300'}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-gray-800">{m.name}</span>
+                      <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{m.phase}</span>
+                    </div>
+                    <div className="text-xs text-gray-400 mt-0.5">
+                      Planned {formatDate(m.plannedDate)}
+                      {m.actualDate && <span className="text-green-600 ml-1">· Done {formatDate(m.actualDate)}</span>}
+                    </div>
+                  </div>
+                  <span className={`text-xs font-medium flex-shrink-0 ${MILESTONE_STATUS_COLOR[m.status] ?? 'text-gray-400'}`}>
+                    {m.status.replace('_', ' ')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
       </div>
     </AppShell>
   )

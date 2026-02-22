@@ -246,7 +246,7 @@ export interface TowerDashboardPayload {
   trend: HealthScoreHistoryDTO[]
   actions: ActionDTO[]
   artefacts: ArtefactDTO[]
-  pendingDecisions: DecisionDTO[]
+  pendingDecisions: RaiddDTO[]
   raidds: RaiddDTO[]
   milestones: MilestoneDTO[]
   weekEnding: string

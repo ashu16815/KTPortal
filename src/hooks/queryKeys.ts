@@ -13,4 +13,7 @@ export const queryKeys = {
   weights: () => ['weights'] as const,
   audit: (page?: number) => ['audit', page] as const,
   pulse: (submissionId?: string) => ['pulse', submissionId] as const,
+  groups: () => ['groups'] as const,
+  raidd: (params?: Record<string, string>) => ['raidd', params] as const,
+  milestones: (params?: Record<string, string>) => ['milestones', params] as const,
 }

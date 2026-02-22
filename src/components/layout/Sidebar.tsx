@@ -13,9 +13,12 @@ interface NavItem {
 }
 
 const NAV: NavItem[] = [
+  { href: '/dashboard/programme', label: 'Programme', icon: '🗺️' },
   { href: '/dashboard/executive', label: 'Executive', icon: '📊', roles: ['ADMIN', 'EXEC'] },
   { href: '/submissions/new', label: 'Submit Update', icon: '📝', roles: ['TWG_LEAD', 'TCS_LEAD', 'TWG_OWNER', 'TCS_OWNER'] },
   { href: '/submissions/compare', label: 'Compare', icon: '⚖️' },
+  { href: '/raidd', label: 'RAIDD Log', icon: '⚠️' },
+  { href: '/milestones', label: 'Milestones', icon: '🏁' },
   { href: '/actions', label: 'Actions', icon: '✅' },
   { href: '/admin', label: 'Admin', icon: '⚙️', roles: ['ADMIN'] },
 ]
