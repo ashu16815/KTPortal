@@ -2,9 +2,11 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { normaliseWeekEnding } from '@/lib/utils'
 import { calculateVariance, isVarianceFlagged } from '@/lib/scoring'
+import { requireSession } from '@/lib/auth'
 
 export async function GET() {
   try {
+    await requireSession()
     const weekEnding = normaliseWeekEnding(new Date())
     const weightsRow = await prisma.scoringWeights.findFirst()
     const varianceThreshold = weightsRow?.varianceThreshold ?? 20
@@ -81,7 +83,10 @@ export async function GET() {
     }))
 
     return NextResponse.json({ data: result })
-  } catch (err) {
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === 'UNAUTHENTICATED') {
+      return NextResponse.json({ error: { code: 'UNAUTHENTICATED', message: 'Login required' } }, { status: 401 })
+    }
     console.error(err)
     return NextResponse.json({ error: { code: 'INTERNAL', message: 'Failed to load groups' } }, { status: 500 })
   }

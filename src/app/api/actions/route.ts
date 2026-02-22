@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { requireSession } from '@/lib/auth'
+import { requireSession, canWriteTower } from '@/lib/auth'
 import { writeAudit } from '@/lib/audit'
 
 export async function GET(request: NextRequest) {
@@ -46,6 +46,13 @@ export async function POST(request: NextRequest) {
   try {
     const session = await requireSession()
     const body = await request.json()
+
+    if (session.role === 'EXEC') {
+      return NextResponse.json({ error: { code: 'FORBIDDEN', message: 'Exec users have read-only access' } }, { status: 403 })
+    }
+    if (body.towerId && !canWriteTower(session, body.towerId)) {
+      return NextResponse.json({ error: { code: 'FORBIDDEN', message: 'You can only create actions for your own tower' } }, { status: 403 })
+    }
 
     const action = await prisma.action.create({
       data: {

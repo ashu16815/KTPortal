@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { queryKeys } from '@/hooks/queryKeys'
 import { formatDate } from '@/lib/utils'
+import { useSession } from '@/hooks/useSession'
 import type { MilestoneDTO, MilestoneStatus } from '@/types'
 
 const STATUS_CONFIG: Record<MilestoneStatus, { label: string; color: string; dot: string }> = {
@@ -33,9 +34,11 @@ const PHASE_COLOR: Record<string, string> = {
 function MilestoneRow({
   m,
   onUpdate,
+  canEdit,
 }: {
   m: MilestoneDTO
   onUpdate: (id: string, status: MilestoneStatus) => void
+  canEdit: boolean
 }) {
   const cfg = STATUS_CONFIG[m.status as MilestoneStatus] ?? STATUS_CONFIG.PENDING
   const isOverdue = m.status !== 'COMPLETE' && new Date(m.plannedDate) < new Date()
@@ -61,16 +64,18 @@ function MilestoneRow({
       </div>
       <div className="flex items-center gap-2 flex-shrink-0">
         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.color}`}>{cfg.label}</span>
-        <select
-          value={m.status}
-          onChange={e => onUpdate(m.id, e.target.value as MilestoneStatus)}
-          className="text-xs border border-gray-200 rounded px-2 py-1 text-gray-600 bg-white"
-          onClick={e => e.stopPropagation()}
-        >
-          {Object.entries(STATUS_CONFIG).map(([k, v]) => (
-            <option key={k} value={k}>{v.label}</option>
-          ))}
-        </select>
+        {canEdit && (
+          <select
+            value={m.status}
+            onChange={e => onUpdate(m.id, e.target.value as MilestoneStatus)}
+            className="text-xs border border-gray-200 rounded px-2 py-1 text-gray-600 bg-white"
+            onClick={e => e.stopPropagation()}
+          >
+            {Object.entries(STATUS_CONFIG).map(([k, v]) => (
+              <option key={k} value={k}>{v.label}</option>
+            ))}
+          </select>
+        )}
       </div>
     </div>
   )
@@ -80,6 +85,8 @@ export default function MilestonesPage() {
   const [statusFilter, setStatusFilter] = useState<string>('active')
   const [groupBy, setGroupBy] = useState<'tower' | 'phase'>('tower')
   const queryClient = useQueryClient()
+  const { session } = useSession()
+  const isReadOnly = session?.role === 'EXEC'
 
   const params: Record<string, string> = {}
   if (statusFilter === 'at_risk') params.status = 'AT_RISK'
@@ -149,7 +156,10 @@ export default function MilestonesPage() {
         {/* Header */}
         <div className="flex items-start justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Milestones</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-gray-900">Milestones</h1>
+              {isReadOnly && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">Read Only</span>}
+            </div>
             <p className="text-sm text-gray-500 mt-1">KT Phase gate tracking across all towers</p>
           </div>
           <div className="flex gap-2 items-center">
@@ -229,6 +239,7 @@ export default function MilestonesPage() {
                     <MilestoneRow
                       key={m.id}
                       m={m}
+                      canEdit={!isReadOnly && (session?.role === 'ADMIN' || session?.towerId === m.towerId)}
                       onUpdate={(id, status) => mutation.mutate({ id, status })}
                     />
                   ))}

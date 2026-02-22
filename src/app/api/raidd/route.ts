@@ -1,89 +1,100 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { requireSession, canWriteTower } from '@/lib/auth'
+import { writeAudit } from '@/lib/audit'
 
-export async function GET(req: NextRequest) {
+function authError(msg: string, status: number) {
+  return NextResponse.json({ error: { code: status === 401 ? 'UNAUTHENTICATED' : 'FORBIDDEN', message: msg } }, { status })
+}
+
+export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url)
+    await requireSession()
+    const { searchParams } = new URL(request.url)
     const type = searchParams.get('type')
     const status = searchParams.get('status')
     const towerId = searchParams.get('towerId')
 
-    const where: Record<string, unknown> = {}
-    if (type) where.type = type
-    if (status) where.status = status
-    if (towerId) where.towerId = towerId
+    const statuses = status ? status.split(',') : undefined
 
     const raidds = await prisma.raiddLog.findMany({
-      where,
-      include: { tower: { select: { id: true, name: true } } },
-      orderBy: [{ type: 'asc' }, { impact: 'asc' }, { createdAt: 'desc' }],
+      where: {
+        ...(type ? { type } : {}),
+        ...(statuses ? { status: { in: statuses } } : {}),
+        ...(towerId ? { towerId } : {}),
+      },
+      include: { tower: { select: { name: true } } },
+      orderBy: [{ type: 'asc' }, { createdAt: 'desc' }],
     })
 
-    const data = raidds.map(r => ({
-      id: r.id,
-      towerId: r.towerId,
-      towerName: r.tower?.name,
-      type: r.type,
-      title: r.title,
-      description: r.description,
-      impact: r.impact,
-      probability: r.probability,
-      status: r.status,
-      owner: r.owner,
-      raisedBy: r.raisedBy,
-      dueDate: r.dueDate?.toISOString(),
-      closedAt: r.closedAt?.toISOString(),
-      mitigation: r.mitigation,
-      notes: r.notes,
-      createdAt: r.createdAt.toISOString(),
-      updatedAt: r.updatedAt.toISOString(),
-    }))
-
-    return NextResponse.json({ data })
-  } catch (err) {
-    console.error(err)
+    return NextResponse.json({
+      data: raidds.map(r => ({
+        ...r,
+        towerName: r.tower?.name,
+        dueDate: r.dueDate?.toISOString(),
+        closedAt: r.closedAt?.toISOString(),
+        createdAt: r.createdAt.toISOString(),
+        updatedAt: r.updatedAt.toISOString(),
+        tower: undefined,
+      })),
+    })
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === 'UNAUTHENTICATED') return authError('Login required', 401)
     return NextResponse.json({ error: { code: 'INTERNAL', message: 'Failed to load RAIDD log' } }, { status: 500 })
   }
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    const body = await req.json()
-    const { towerId, type, title, description, impact, probability, status, owner, raisedBy, dueDate, mitigation, notes } = body
+    const session = await requireSession()
+    const body = await request.json()
 
-    if (!type || !title) {
-      return NextResponse.json({ error: { code: 'VALIDATION', message: 'type and title are required' } }, { status: 400 })
+    if (!body.title || !body.type) {
+      return NextResponse.json({ error: { code: 'VALIDATION', message: 'title and type are required' } }, { status: 400 })
     }
 
-    const record = await prisma.raiddLog.create({
+    // Exec is read-only
+    if (session.role === 'EXEC') return authError('Exec users have read-only access', 403)
+
+    // Tower leads can only create RAIDD for their own tower
+    if (body.towerId && !canWriteTower(session, body.towerId)) {
+      return authError('You can only create RAIDD items for your own tower', 403)
+    }
+
+    const entry = await prisma.raiddLog.create({
       data: {
-        towerId: towerId ?? null,
-        type,
-        title,
-        description: description ?? null,
-        impact: impact ?? 'MEDIUM',
-        probability: probability ?? null,
-        status: status ?? 'OPEN',
-        owner: owner ?? null,
-        raisedBy: raisedBy ?? null,
-        dueDate: dueDate ? new Date(dueDate) : null,
-        mitigation: mitigation ?? null,
-        notes: notes ?? null,
+        towerId: body.towerId || undefined,
+        type: body.type,
+        title: body.title,
+        description: body.description,
+        impact: body.impact ?? 'MEDIUM',
+        probability: body.probability,
+        status: body.status ?? 'OPEN',
+        owner: body.owner,
+        raisedBy: body.raisedBy ?? session.name,
+        mitigation: body.mitigation,
+        notes: body.notes,
+        dueDate: body.dueDate ? new Date(body.dueDate) : undefined,
       },
-      include: { tower: { select: { id: true, name: true } } },
+      include: { tower: { select: { name: true } } },
     })
+
+    await writeAudit({ userId: session.id, action: 'CREATE', resource: 'raidd', resourceId: entry.id, details: { type: body.type, title: body.title, towerId: body.towerId } })
 
     return NextResponse.json({
       data: {
-        ...record,
-        towerName: record.tower?.name,
-        dueDate: record.dueDate?.toISOString(),
-        closedAt: record.closedAt?.toISOString(),
-        createdAt: record.createdAt.toISOString(),
-        updatedAt: record.updatedAt.toISOString(),
-      },
+        ...entry,
+        towerName: entry.tower?.name,
+        dueDate: entry.dueDate?.toISOString(),
+        closedAt: entry.closedAt?.toISOString(),
+        createdAt: entry.createdAt.toISOString(),
+        updatedAt: entry.updatedAt.toISOString(),
+        tower: undefined,
+      }
     }, { status: 201 })
-  } catch (err) {
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === 'UNAUTHENTICATED') return authError('Login required', 401)
+    if (err instanceof Error && err.message === 'FORBIDDEN') return authError('Access denied', 403)
     console.error(err)
     return NextResponse.json({ error: { code: 'INTERNAL', message: 'Failed to create RAIDD entry' } }, { status: 500 })
   }

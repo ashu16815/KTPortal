@@ -14,7 +14,7 @@ export function useSession() {
       try {
         const match = document.cookie.split('; ').find(c => c.startsWith(`${COOKIE_NAME}=`))
         if (!match) { setSession(null); return }
-        const value = match.split('=')[1]
+        const value = match.split('=').slice(1).join('=') // preserve = in base64 padding
         const decoded = atob(value)
         setSession(JSON.parse(decoded) as SessionUser)
       } catch {

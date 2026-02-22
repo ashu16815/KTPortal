@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/Card'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { queryKeys } from '@/hooks/queryKeys'
 import { formatDate } from '@/lib/utils'
+import { useSession } from '@/hooks/useSession'
 import type { RaiddDTO, RaiddType, RaiddStatus } from '@/types'
 
 const TABS: { type: RaiddType | 'ALL'; label: string; color: string }[] = [
@@ -36,7 +37,7 @@ const TYPE_ICON: Record<string, string> = {
   RISK: '⚠️', ASSUMPTION: '💡', ISSUE: '🔴', DEPENDENCY: '🔗', DECISION: '🔷',
 }
 
-function RaiddRow({ item, onStatusChange }: { item: RaiddDTO; onStatusChange: (id: string, status: RaiddStatus) => void }) {
+function RaiddRow({ item, onStatusChange, canEdit }: { item: RaiddDTO; onStatusChange: (id: string, status: RaiddStatus) => void; canEdit: boolean }) {
   const [expanded, setExpanded] = useState(false)
 
   return (
@@ -96,24 +97,26 @@ function RaiddRow({ item, onStatusChange }: { item: RaiddDTO; onStatusChange: (i
               <p className="text-sm text-gray-700">{item.notes}</p>
             </div>
           )}
-          <div>
-            <div className="text-xs font-medium text-gray-500 mb-1.5">Update Status</div>
-            <div className="flex gap-2 flex-wrap">
-              {(['OPEN', 'IN_PROGRESS', 'ESCALATED', 'ACCEPTED', 'CLOSED'] as RaiddStatus[]).map(s => (
-                <button
-                  key={s}
-                  onClick={() => onStatusChange(item.id, s)}
-                  className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                    item.status === s
-                      ? `${STATUS_COLOR[s]} border-transparent`
-                      : 'bg-white border-gray-200 text-gray-500 hover:border-gray-400'
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
+          {canEdit && (
+            <div>
+              <div className="text-xs font-medium text-gray-500 mb-1.5">Update Status</div>
+              <div className="flex gap-2 flex-wrap">
+                {(['OPEN', 'IN_PROGRESS', 'ESCALATED', 'ACCEPTED', 'CLOSED'] as RaiddStatus[]).map(s => (
+                  <button
+                    key={s}
+                    onClick={() => onStatusChange(item.id, s)}
+                    className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                      item.status === s
+                        ? `${STATUS_COLOR[s]} border-transparent`
+                        : 'bg-white border-gray-200 text-gray-500 hover:border-gray-400'
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
           <div className="text-xs text-gray-400">
             Raised {formatDate(item.createdAt)} · Updated {formatDate(item.updatedAt)}
           </div>
@@ -127,6 +130,8 @@ export default function RaiddPage() {
   const [activeTab, setActiveTab] = useState<RaiddType | 'ALL'>('ALL')
   const [statusFilter, setStatusFilter] = useState<string>('open')
   const queryClient = useQueryClient()
+  const { session } = useSession()
+  const isReadOnly = session?.role === 'EXEC'
 
   const params: Record<string, string> = {}
   if (activeTab !== 'ALL') params.type = activeTab
@@ -170,7 +175,10 @@ export default function RaiddPage() {
         {/* Header */}
         <div className="flex items-start justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">RAIDD Log</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-gray-900">RAIDD Log</h1>
+              {isReadOnly && <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-medium">Read Only</span>}
+            </div>
             <p className="text-sm text-gray-500 mt-1">Risks · Assumptions · Issues · Dependencies · Decisions</p>
           </div>
           <div className="flex gap-2 items-center">
@@ -222,6 +230,7 @@ export default function RaiddPage() {
               <RaiddRow
                 key={item.id}
                 item={item}
+                canEdit={!isReadOnly && (session?.role === 'ADMIN' || session?.towerId === item.towerId)}
                 onStatusChange={(id, status) => mutation.mutate({ id, status })}
               />
             ))}

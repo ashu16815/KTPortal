@@ -1,7 +1,7 @@
 import { prisma } from './prisma'
 
 export type AuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN'
-export type AuditResource = 'tower' | 'track' | 'submission' | 'action' | 'user' | 'weights' | 'artefact' | 'decision' | 'auth'
+export type AuditResource = 'tower' | 'track' | 'submission' | 'action' | 'user' | 'weights' | 'artefact' | 'decision' | 'auth' | 'raidd' | 'milestone'
 
 export async function writeAudit(params: {
   userId?: string

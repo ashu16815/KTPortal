@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { createSessionCookie } from '@/lib/auth'
+import { writeAudit } from '@/lib/audit'
 import type { SessionUser } from '@/types'
 
 const COOKIE_NAME = 'kt_stub_session'
@@ -21,6 +22,7 @@ export async function POST(request: NextRequest) {
     }
 
     const cookie = createSessionCookie(session)
+    await writeAudit({ userId: user.id, action: 'LOGIN', resource: 'auth', resourceId: user.id, details: { email: user.email, role: user.role } })
     const response = NextResponse.json({ data: session })
     response.cookies.set(COOKIE_NAME, cookie, {
       httpOnly: false,

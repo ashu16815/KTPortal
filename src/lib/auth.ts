@@ -41,4 +41,15 @@ export function createSessionCookie(user: SessionUser): string {
   return Buffer.from(JSON.stringify(user)).toString('base64')
 }
 
+// Returns true if the session user is allowed to write to the given tower.
+// Admin can write anywhere. Tower leads/owners can only write to their own tower.
+// Exec users have read-only access everywhere.
+export function canWriteTower(session: SessionUser, towerId: string | null | undefined): boolean {
+  if (session.role === 'ADMIN') return true
+  if (['TWG_LEAD', 'TCS_LEAD', 'TWG_OWNER', 'TCS_OWNER'].includes(session.role)) {
+    return !!towerId && session.towerId === towerId
+  }
+  return false
+}
+
 export const COOKIE_NAME_EXPORT = COOKIE_NAME
