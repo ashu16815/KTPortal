@@ -68,122 +68,136 @@ class AzureOpenAIProvider implements AIProvider {
   private apiKey: string
   private endpoint: string
   private deploymentName: string
+  private apiVersion: string
 
   constructor() {
-    this.apiKey = process.env.AZURE_OPENAI_KEY!
-    this.endpoint = process.env.AZURE_OPENAI_ENDPOINT!
-    this.deploymentName = process.env.AZURE_OPENAI_DEPLOYMENT ?? 'gpt-4o'
+    // Support both AZURE_OPENAI_API_KEY (new) and AZURE_OPENAI_KEY (legacy)
+    this.apiKey = (process.env.AZURE_OPENAI_API_KEY ?? process.env.AZURE_OPENAI_KEY)!
+    this.endpoint = process.env.AZURE_OPENAI_ENDPOINT!.replace(/\/$/, '')
+    this.deploymentName = process.env.AZURE_OPENAI_DEPLOYMENT_GPT5 ?? process.env.AZURE_OPENAI_DEPLOYMENT ?? 'gpt-4o'
+    this.apiVersion = process.env.AZURE_OPENAI_API_VERSION ?? '2024-10-01-preview'
+  }
+
+  private get url() {
+    return `${this.endpoint}/openai/deployments/${this.deploymentName}/chat/completions?api-version=${this.apiVersion}`
+  }
+
+  // gpt-5-mini is a reasoning model: uses max_completion_tokens (includes reasoning budget),
+  // does not support temperature. Budget must be large enough for internal reasoning + output.
+  private buildBody(prompt: string, maxCompletionTokens: number) {
+    return JSON.stringify({
+      messages: [{ role: 'user', content: prompt }],
+      max_completion_tokens: maxCompletionTokens,
+    })
   }
 
   async generateProgrammeReport(data: ProgrammeReportInput): Promise<ProgrammeReport> {
     const { weekEnding, totalTowers, ragCounts, towers, topRaidds, overdueActions, atRiskMilestones, pulseComments } = data
 
     const towerSummaries = towers.map(t =>
-      `- ${t.name} (${t.group}, ${t.phase}): TWG ${t.twgScore ?? '—'}, TCS ${t.tcsScore ?? '—'}, RAG ${t.ragStatus ?? '—'}${t.overdueActions > 0 ? `, ${t.overdueActions} overdue actions` : ''}${t.blockers.length > 0 ? `, blockers: ${t.blockers.join('; ')}` : ''}${t.narrative ? `, narrative: ${t.narrative}` : ''}`
+      `- ${t.name} (${t.group}, ${t.phase || 'N/A'}): TWG ${t.twgScore ?? '—'}, TCS ${t.tcsScore ?? '—'}, RAG ${t.ragStatus ?? 'N/A'}` +
+      (t.overdueActions > 0 ? `, ${t.overdueActions} overdue action(s)` : '') +
+      (t.blockers.length > 0 ? `, BLOCKERS: ${t.blockers.slice(0, 2).join('; ')}` : '') +
+      (t.narrative ? `\n  Narrative: ${t.narrative.slice(0, 200)}` : '')
     ).join('\n')
 
-    const raiddSummary = topRaidds.map(r => `- [${r.type}/${r.impact}] ${r.title} (${r.towerName})`).join('\n') || 'None'
-    const actionsSummary = overdueActions.map(a => `- [${a.priority}] ${a.title} (${a.towerName})`).join('\n') || 'None'
-    const milestoneSummary = atRiskMilestones.map(m => `- ${m.name} (${m.towerName}): ${m.status}`).join('\n') || 'None'
-    const pulseSummary = pulseComments.map(p => `- ${p.towerName} / ${p.track}: "${p.comment}"`).join('\n') || 'None'
+    const raiddSummary = topRaidds.map(r => `- [${r.type} / ${r.impact} impact] ${r.title} — ${r.towerName}`).join('\n') || 'None recorded'
+    const actionsSummary = overdueActions.map(a => `- [${a.priority}] ${a.title} — ${a.towerName}`).join('\n') || 'None overdue'
+    const milestoneSummary = atRiskMilestones.map(m => `- ${m.name} (${m.towerName}): ${m.status}`).join('\n') || 'None at risk'
+    const pulseSummary = pulseComments.map(p => `- ${p.towerName} / ${p.track}: "${p.comment}"`).join('\n') || 'No pulse comments'
 
-    const prompt = `You are a senior programme manager analysing a KT (Knowledge Transfer) transition programme.
+    const prompt = `You are a senior KT (Knowledge Transfer) Programme Manager analysing a live transition programme.
+Your job is to produce an AI-generated executive briefing based on the data below.
+
+=== PROGRAMME SNAPSHOT ===
 Week Ending: ${weekEnding}
-Total Towers: ${totalTowers} | GREEN: ${ragCounts.GREEN} | AMBER: ${ragCounts.AMBER} | RED: ${ragCounts.RED}
+Total Towers: ${totalTowers}  |  GREEN: ${ragCounts.GREEN}  |  AMBER: ${ragCounts.AMBER}  |  RED: ${ragCounts.RED}
 
-TOWER HEALTH SCORES:
+=== TOWER HEALTH (TWG & TCS scores, RAG, overdue actions, blockers, narratives) ===
 ${towerSummaries}
 
-TOP RAIDD ITEMS (Risks/Assumptions/Issues/Dependencies/Decisions):
+=== TOP OPEN RAIDD ITEMS (Risks / Assumptions / Issues / Dependencies / Decisions) ===
 ${raiddSummary}
 
-OVERDUE ACTIONS:
+=== OVERDUE ACTIONS ===
 ${actionsSummary}
 
-AT-RISK MILESTONES:
+=== AT-RISK / DELAYED / BLOCKED MILESTONES ===
 ${milestoneSummary}
 
-PULSE SURVEY COMMENTS:
+=== PULSE SURVEY COMMENTS FROM TEAMS ===
 ${pulseSummary}
 
-Respond ONLY with valid JSON in this exact structure (no markdown, no extra text):
+=== INSTRUCTIONS ===
+Respond ONLY with a single valid JSON object using exactly these keys (no markdown fences, no extra text):
 {
-  "summary": "2-3 sentence overall programme health summary",
-  "workingWell": "Bullet-point list of what is working well across towers (3-5 points)",
-  "notWorking": "Bullet-point list of key issues and what is not working (3-5 points)",
-  "commonRisks": "Analysis of recurring risks and issues across multiple towers",
-  "priorityActions": "Top 5 numbered priority actions leadership should take this week",
-  "forwardActions": "Forward-looking actions and recommendations for improved KT progress over next 2-4 weeks"
+  "summary": "3-4 sentence overall programme health executive summary. State the RAG breakdown, highlight the most critical issue, and give one forward-looking statement.",
+  "workingWell": "Bullet list (use • prefix, one per line) of 3-5 specific things working well across the programme based on the data.",
+  "notWorking": "Bullet list (use • prefix, one per line) of 3-5 specific issues or gaps that are not working, with tower references where relevant.",
+  "commonRisks": "Paragraph analysis of recurring risks and cross-tower patterns identified in the RAIDD log and narratives. Name specific towers and risk themes.",
+  "priorityActions": "Numbered list (1. 2. 3. 4. 5.) of the top 5 priority actions leadership must take THIS WEEK, ordered by urgency. Be specific — name towers and owners where possible.",
+  "forwardActions": "Bullet list (use • prefix, one per line) of 4-6 forward-looking recommendations for the next 2-4 weeks to improve KT progress across the programme."
 }`
 
-    const url = `${this.endpoint}/openai/deployments/${this.deploymentName}/chat/completions?api-version=2024-02-15-preview`
-    const response = await fetch(url, {
+    const response = await fetch(this.url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'api-key': this.apiKey },
-      body: JSON.stringify({
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.2,
-        max_tokens: 1500,
-      }),
+      body: this.buildBody(prompt, 8000),
     })
 
-    if (!response.ok) throw new Error(`Azure OpenAI error: ${response.status}`)
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(`Azure OpenAI error ${response.status}: ${JSON.stringify(err)}`)
+    }
 
     const result = await response.json()
-    const text = result.choices?.[0]?.message?.content ?? '{}'
+    const text: string = result.choices?.[0]?.message?.content ?? ''
+
+    // Strip possible markdown code fences the model might still add
+    const cleaned = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '').trim()
     try {
-      return JSON.parse(text) as ProgrammeReport
+      return JSON.parse(cleaned) as ProgrammeReport
     } catch {
+      // If JSON parse fails, put the raw text in summary so it's still visible
       return {
-        summary: text.slice(0, 500),
+        summary: cleaned.slice(0, 1000) || 'AI response could not be parsed.',
         workingWell: '', notWorking: '', commonRisks: '', priorityActions: '', forwardActions: '',
       }
     }
   }
 
   async generateSummary(submission: Partial<WeeklySubmissionDTO>, towerName: string): Promise<string> {
-    const prompt = `You are a KT (Knowledge Transfer) programme manager writing an executive summary.
+    const prompt = `You are a KT Programme Manager writing a concise weekly executive summary for a single tower.
+
 Tower: ${towerName}
 Week Ending: ${submission.weekEnding}
 Org: ${submission.org}
 RAG Status: ${submission.ragStatus}
 Total Score: ${submission.totalScore}/100
-- Progress: ${submission.progressScore}/100
-- Coverage: ${submission.coverageScore}/100
-- Confidence: ${submission.confidenceScore}/100
-- Operational: ${submission.operationalScore}/100
-- Quality: ${submission.qualityScore}/100
-Narrative: ${submission.narrative ?? 'None'}
-Risks: ${JSON.stringify(submission.risks ?? [])}
-Blockers: ${JSON.stringify(submission.blockers ?? [])}
+  Progress: ${submission.progressScore}/100 | Coverage: ${submission.coverageScore}/100
+  Confidence: ${submission.confidenceScore}/100 | Operational: ${submission.operationalScore}/100 | Quality: ${submission.qualityScore}/100
+Narrative: ${submission.narrative ?? 'None provided'}
+Risks: ${(submission.risks ?? []).join(', ') || 'None'}
+Blockers: ${(submission.blockers ?? []).join(', ') || 'None'}
 
-Write a concise 2-3 sentence executive summary highlighting the health status, key risks, and recommended actions. Be factual and direct.`
+Write 2-3 sentences: state the health status and score, call out the most important risk or achievement, and recommend one action. Be factual and direct.`
 
-    const url = `${this.endpoint}/openai/deployments/${this.deploymentName}/chat/completions?api-version=2024-02-15-preview`
-    const response = await fetch(url, {
+    const response = await fetch(this.url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'api-key': this.apiKey,
-      },
-      body: JSON.stringify({
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.3,
-        max_tokens: 300,
-      }),
+      headers: { 'Content-Type': 'application/json', 'api-key': this.apiKey },
+      body: this.buildBody(prompt, 3000),
     })
 
-    if (!response.ok) {
-      throw new Error(`Azure OpenAI error: ${response.status}`)
-    }
+    if (!response.ok) throw new Error(`Azure OpenAI error: ${response.status}`)
 
     const data = await response.json()
-    return data.choices?.[0]?.message?.content ?? 'Summary unavailable.'
+    return data.choices?.[0]?.message?.content?.trim() ?? 'Summary unavailable.'
   }
 }
 
 export function getAIProvider(): AIProvider {
-  if (process.env.AZURE_OPENAI_KEY && process.env.AZURE_OPENAI_ENDPOINT) {
+  const key = process.env.AZURE_OPENAI_API_KEY ?? process.env.AZURE_OPENAI_KEY
+  if (key && process.env.AZURE_OPENAI_ENDPOINT) {
     return new AzureOpenAIProvider()
   }
   return new StubAIProvider()
