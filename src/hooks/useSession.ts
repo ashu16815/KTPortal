@@ -15,7 +15,7 @@ export function useSession() {
         const match = document.cookie.split('; ').find(c => c.startsWith(`${COOKIE_NAME}=`))
         if (!match) { setSession(null); return }
         const value = match.split('=').slice(1).join('=') // preserve = in base64 padding
-        const decoded = atob(value)
+        const decoded = atob(decodeURIComponent(value)) // server cookies are URL-encoded
         setSession(JSON.parse(decoded) as SessionUser)
       } catch {
         setSession(null)

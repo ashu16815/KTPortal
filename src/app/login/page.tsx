@@ -32,7 +32,7 @@ export default function LoginPage() {
     if (!match) return
     try {
       const value = match.split('=').slice(1).join('=') // preserve = in base64 padding
-      const session = JSON.parse(atob(value)) as User
+      const session = JSON.parse(atob(decodeURIComponent(value))) as User
       if (session.role === 'ADMIN') router.push('/admin')
       else if (session.role === 'EXEC') router.push('/dashboard/executive')
       else if (session.towerId) router.push(`/dashboard/tower/${session.towerId}`)
