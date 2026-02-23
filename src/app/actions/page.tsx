@@ -8,10 +8,13 @@ import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { queryKeys } from '@/hooks/queryKeys'
 import { formatDate, csvExport } from '@/lib/utils'
-import type { ActionDTO, ActionStatus } from '@/types'
+import { useSession } from '@/hooks/useSession'
+import type { ActionDTO, ActionStatus, TowerDTO } from '@/types'
 
 const STATUS_OPTIONS: ActionStatus[] = ['OPEN', 'IN_PROGRESS', 'DONE', 'OVERDUE']
 const PRIORITY_OPTIONS = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']
+
+const inputCls = 'w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-slate-400 bg-white'
 
 function statusClass(status: string) {
   switch (status) {
@@ -31,14 +34,108 @@ function priorityClass(priority: string) {
   }
 }
 
+// ─── Action Form Modal ────────────────────────────────────────────────────────
+
+function ActionFormModal({
+  item,
+  towers,
+  defaultTowerId,
+  onClose,
+  onSave,
+  saving,
+}: {
+  item: ActionDTO | null
+  towers: TowerDTO[]
+  defaultTowerId: string | undefined
+  onClose: () => void
+  onSave: (data: Partial<ActionDTO>) => void
+  saving: boolean
+}) {
+  const [form, setForm] = useState({
+    towerId: item?.towerId ?? defaultTowerId ?? '',
+    title: item?.title ?? '',
+    description: item?.description ?? '',
+    priority: item?.priority ?? 'MEDIUM',
+    status: item?.status ?? 'OPEN',
+    dueDate: item?.dueDate ? item.dueDate.slice(0, 10) : '',
+  })
+  const set = (k: string, v: string) => setForm(f => ({ ...f, [k]: v }))
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h3 className="text-base font-semibold text-gray-900">{item ? 'Edit Action' : 'Add Action'}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Tower *</label>
+            <select className={inputCls} value={form.towerId} onChange={e => set('towerId', e.target.value)}>
+              <option value="">Select tower...</option>
+              {towers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Title *</label>
+            <input className={inputCls} value={form.title} onChange={e => set('title', e.target.value)} placeholder="Action title..." />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+            <textarea className={inputCls} rows={3} value={form.description} onChange={e => set('description', e.target.value)} placeholder="Details..." />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Priority</label>
+              <select className={inputCls} value={form.priority} onChange={e => set('priority', e.target.value)}>
+                {PRIORITY_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
+              <select className={inputCls} value={form.status} onChange={e => set('status', e.target.value)}>
+                {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Due Date</label>
+            <input type="date" className={inputCls} value={form.dueDate} onChange={e => set('dueDate', e.target.value)} />
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 px-5 py-4 border-t border-gray-100">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">Cancel</button>
+          <Button
+            onClick={() => onSave(form)}
+            loading={saving}
+            disabled={!form.towerId || !form.title.trim()}
+          >
+            {item ? 'Save changes' : 'Add action'}
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
 export default function ActionsPage() {
   const queryClient = useQueryClient()
+  const { session } = useSession()
+  const isReadOnly = session?.role === 'EXEC'
+  const isAdmin = session?.role === 'ADMIN'
+
   const [filterStatus, setFilterStatus] = useState('')
   const [filterPriority, setFilterPriority] = useState('')
+  const [filterTower, setFilterTower] = useState('')
+  const [modal, setModal] = useState<ActionDTO | null | 'new'>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ActionDTO | null>(null)
 
   const params = new URLSearchParams()
   if (filterStatus) params.set('status', filterStatus)
   if (filterPriority) params.set('priority', filterPriority)
+  if (filterTower) params.set('towerId', filterTower)
 
   const { data, isLoading } = useQuery<{ data: ActionDTO[] }>({
     queryKey: queryKeys.actions({ status: filterStatus, priority: filterPriority }),
@@ -48,6 +145,18 @@ export default function ActionsPage() {
       return res.json()
     },
   })
+
+  const { data: towersData } = useQuery<{ data: TowerDTO[] }>({
+    queryKey: ['towers'],
+    queryFn: async () => {
+      const res = await fetch('/api/towers')
+      if (!res.ok) return { data: [] }
+      return res.json()
+    },
+    enabled: !isReadOnly,
+  })
+
+  const towers = towersData?.data ?? []
 
   const { mutate: updateStatus } = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
@@ -60,6 +169,29 @@ export default function ActionsPage() {
       return res.json()
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['actions'] }),
+  })
+
+  const { mutate: saveAction, isPending: saving } = useMutation({
+    mutationFn: async ({ id, data }: { id?: string; data: Partial<ActionDTO> }) => {
+      const url = id ? `/api/actions/${id}` : '/api/actions'
+      const res = await fetch(url, {
+        method: id ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error('Failed')
+      return res.json()
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['actions'] }); setModal(null) },
+  })
+
+  const { mutate: deleteAction, isPending: deleting } = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/actions/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed')
+      return res.json()
+    },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['actions'] }); setDeleteTarget(null) },
   })
 
   const actions = data?.data ?? []
@@ -88,6 +220,8 @@ export default function ActionsPage() {
   const overdueCount = actions.filter(a => a.status === 'OVERDUE').length
   const openCount = actions.filter(a => a.status === 'OPEN').length
 
+  const canEditAction = (a: ActionDTO) => !isReadOnly && (isAdmin || session?.towerId === a.towerId)
+
   return (
     <AppShell>
       <div className="space-y-5">
@@ -101,9 +235,14 @@ export default function ActionsPage() {
               {openCount > 0 && <span className="text-amber-600 ml-2">· {openCount} open</span>}
             </p>
           </div>
-          <Button variant="secondary" size="sm" onClick={handleExport} disabled={actions.length === 0}>
-            Export CSV
-          </Button>
+          <div className="flex gap-2">
+            {!isReadOnly && (
+              <Button size="sm" onClick={() => setModal('new')}>+ Add Action</Button>
+            )}
+            <Button variant="secondary" size="sm" onClick={handleExport} disabled={actions.length === 0}>
+              Export CSV
+            </Button>
+          </div>
         </div>
 
         {/* Filters */}
@@ -130,9 +269,22 @@ export default function ActionsPage() {
               {PRIORITY_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
-          {(filterStatus || filterPriority) && (
+          {towers.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Tower</label>
+              <select
+                value={filterTower}
+                onChange={e => setFilterTower(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              >
+                <option value="">All towers</option>
+                {towers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            </div>
+          )}
+          {(filterStatus || filterPriority || filterTower) && (
             <button
-              onClick={() => { setFilterStatus(''); setFilterPriority('') }}
+              onClick={() => { setFilterStatus(''); setFilterPriority(''); setFilterTower('') }}
               className="text-sm text-gray-400 hover:text-gray-600 pb-0.5"
             >
               Clear filters
@@ -155,12 +307,13 @@ export default function ActionsPage() {
                   <th className="px-4 py-3 text-left font-medium text-gray-600">Owner</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">Due Date</th>
                   <th className="px-4 py-3 text-left font-medium text-gray-600">Update Status</th>
+                  {!isReadOnly && <th className="px-4 py-3" />}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {actions.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center">
+                    <td colSpan={isReadOnly ? 7 : 8} className="px-4 py-12 text-center">
                       <div className="text-gray-300 text-3xl mb-2">✅</div>
                       <div className="text-gray-400">No actions found</div>
                     </td>
@@ -168,6 +321,7 @@ export default function ActionsPage() {
                 ) : (
                   actions.map(action => {
                     const isOverdue = action.dueDate && new Date(action.dueDate) < new Date() && action.status !== 'DONE'
+                    const canEdit = canEditAction(action)
                     return (
                       <tr key={action.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-3">
@@ -198,16 +352,40 @@ export default function ActionsPage() {
                           )}
                         </td>
                         <td className="px-4 py-3">
-                          <select
-                            value={action.status}
-                            onChange={e => updateStatus({ id: action.id, status: e.target.value })}
-                            className="text-xs px-2 py-1.5 border border-gray-200 rounded-lg bg-white focus:ring-1 focus:ring-blue-500 focus:outline-none"
-                          >
-                            {STATUS_OPTIONS.map(s => (
-                              <option key={s} value={s}>{s}</option>
-                            ))}
-                          </select>
+                          {canEdit ? (
+                            <select
+                              value={action.status}
+                              onChange={e => updateStatus({ id: action.id, status: e.target.value })}
+                              className="text-xs px-2 py-1.5 border border-gray-200 rounded-lg bg-white focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                            >
+                              {STATUS_OPTIONS.map(s => (
+                                <option key={s} value={s}>{s}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-xs text-gray-400">{action.status}</span>
+                          )}
                         </td>
+                        {!isReadOnly && (
+                          <td className="px-4 py-3">
+                            {canEdit && (
+                              <div className="flex gap-1">
+                                <button
+                                  onClick={() => setModal(action)}
+                                  className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50"
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  onClick={() => setDeleteTarget(action)}
+                                  className="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        )}
                       </tr>
                     )
                   })
@@ -217,6 +395,38 @@ export default function ActionsPage() {
           </div>
         )}
       </div>
+
+      {/* Add / Edit modal */}
+      {modal !== null && (
+        <ActionFormModal
+          item={modal === 'new' ? null : modal}
+          towers={towers}
+          defaultTowerId={session?.towerId}
+          onClose={() => setModal(null)}
+          onSave={formData => saveAction({ id: modal === 'new' ? undefined : modal.id, data: formData })}
+          saving={saving}
+        />
+      )}
+
+      {/* Delete confirm */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+            <h3 className="text-base font-semibold text-gray-900 mb-2">Delete action?</h3>
+            <p className="text-sm text-gray-600 mb-5">
+              &ldquo;{deleteTarget.title}&rdquo; will be permanently removed.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setDeleteTarget(null)} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800">
+                Cancel
+              </button>
+              <Button variant="danger" onClick={() => deleteAction(deleteTarget.id)} loading={deleting}>
+                Delete
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppShell>
   )
 }
