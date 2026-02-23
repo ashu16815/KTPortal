@@ -261,6 +261,20 @@ export interface ComparePayload {
   varianceFlagged: boolean
 }
 
+export interface AiReportDTO {
+  id: string
+  generatedById: string
+  generatedByName: string
+  summary: string
+  workingWell: string | null
+  notWorking: string | null
+  commonRisks: string | null
+  priorityActions: string | null
+  forwardActions: string | null
+  metadata: string | null
+  createdAt: string
+}
+
 export interface ApiSuccess<T> {
   data: T
 }

@@ -1,18 +1,123 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { AppShell } from '@/components/layout/AppShell'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { RAGBadge } from '@/components/ui/Badge'
+import { Button } from '@/components/ui/Button'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
 import { PulseTrend } from '@/components/charts/PulseTrend'
 import { RAGDonut } from '@/components/charts/RAGDonut'
 import { queryKeys } from '@/hooks/queryKeys'
 import { formatDate } from '@/lib/utils'
-import type { ExecDashboardPayload, RAGStatus } from '@/types'
+import { useSession } from '@/hooks/useSession'
+import type { ExecDashboardPayload, RAGStatus, AiReportDTO } from '@/types'
 import Link from 'next/link'
 
+function AiReportSection({ report, onGenerate, generating }: {
+  report: AiReportDTO | null
+  onGenerate: () => void
+  generating: boolean
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const meta = report?.metadata ? (() => { try { return JSON.parse(report.metadata) } catch { return null } })() : null
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>AI Intelligence Report</CardTitle>
+            {report && (
+              <p className="text-xs text-gray-400 mt-0.5">
+                Generated {formatDate(report.createdAt)} by {report.generatedByName}
+                {meta && ` · ${meta.totalTowers} towers · ${meta.ragCounts?.RED ?? 0} RED`}
+              </p>
+            )}
+          </div>
+          <Button size="sm" onClick={onGenerate} loading={generating}>
+            {generating ? 'Analysing…' : report ? '↻ Regenerate' : '✦ Generate AI Report'}
+          </Button>
+        </div>
+      </CardHeader>
+
+      {!report && !generating && (
+        <div className="text-center py-8 text-gray-400">
+          <div className="text-3xl mb-2">🤖</div>
+          <p className="text-sm">No AI report generated yet.</p>
+          <p className="text-xs mt-1">Click &ldquo;Generate AI Report&rdquo; to analyse live programme data.</p>
+        </div>
+      )}
+
+      {generating && (
+        <div className="text-center py-8">
+          <div className="inline-flex items-center gap-2 text-blue-600 text-sm">
+            <div className="w-4 h-4 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+            Analysing programme data with Azure OpenAI…
+          </div>
+        </div>
+      )}
+
+      {report && !generating && (
+        <div className="space-y-4">
+          {/* Summary */}
+          <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
+            <p className="text-sm text-blue-900 leading-relaxed">{report.summary}</p>
+          </div>
+
+          <button
+            onClick={() => setExpanded(e => !e)}
+            className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+          >
+            {expanded ? '▲ Collapse details' : '▼ Show full analysis'}
+          </button>
+
+          {expanded && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[
+                { label: '✅ What\'s Working Well', content: report.workingWell, color: 'bg-green-50 border-green-100 text-green-900' },
+                { label: '⚠️ What\'s Not Working', content: report.notWorking, color: 'bg-amber-50 border-amber-100 text-amber-900' },
+                { label: '🔴 Common Risks & Issues', content: report.commonRisks, color: 'bg-red-50 border-red-100 text-red-900' },
+                { label: '🎯 Priority Actions This Week', content: report.priorityActions, color: 'bg-purple-50 border-purple-100 text-purple-900' },
+                { label: '📅 Forward Actions', content: report.forwardActions, color: 'bg-slate-50 border-slate-200 text-slate-800 md:col-span-2' },
+              ].filter(s => s.content).map(section => (
+                <div key={section.label} className={`border rounded-lg p-4 ${section.color}`}>
+                  <div className="text-xs font-semibold mb-2">{section.label}</div>
+                  <p className="text-xs leading-relaxed whitespace-pre-line">{section.content}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  )
+}
+
 export default function ExecutiveDashboard() {
+  const { session } = useSession()
+  const queryClient = useQueryClient()
+  const canGenerate = session?.role === 'ADMIN' || session?.role === 'EXEC'
+
+  const { data: aiData } = useQuery<{ data: AiReportDTO | null }>({
+    queryKey: ['ai-report'],
+    queryFn: async () => {
+      const res = await fetch('/api/ai/report')
+      if (!res.ok) return { data: null }
+      return res.json()
+    },
+  })
+
+  const { mutate: generateReport, isPending: generating } = useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/ai/report', { method: 'POST' })
+      if (!res.ok) throw new Error('Generation failed')
+      return res.json()
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['ai-report'] }),
+  })
+
   const { data, isLoading, error } = useQuery<{ data: ExecDashboardPayload }>({
     queryKey: queryKeys.execDashboard(),
     queryFn: async () => {
@@ -147,6 +252,15 @@ export default function ExecutiveDashboard() {
             })}
           </div>
         </div>
+
+        {/* AI Intelligence */}
+        {canGenerate && (
+          <AiReportSection
+            report={aiData?.data ?? null}
+            onGenerate={() => generateReport()}
+            generating={generating}
+          />
+        )}
 
         {/* Bottom row */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

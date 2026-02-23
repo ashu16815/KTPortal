@@ -286,3 +286,19 @@ model AuditLog {
 
   user User? @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
+
+// ─── AI REPORTS ───────────────────────────────────────────────────────────────
+
+model AiReport {
+  id              String   @id @default(cuid())
+  generatedById   String
+  generatedByName String
+  summary         String   @db.NVarChar(Max)
+  workingWell     String?  @db.NVarChar(Max)
+  notWorking      String?  @db.NVarChar(Max)
+  commonRisks     String?  @db.NVarChar(Max)
+  priorityActions String?  @db.NVarChar(Max)
+  forwardActions  String?  @db.NVarChar(Max)
+  metadata        String?  @db.NVarChar(Max) // JSON: counts snapshot
+  createdAt       DateTime @default(now())
+}
