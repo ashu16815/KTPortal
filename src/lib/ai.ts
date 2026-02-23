@@ -106,37 +106,65 @@ class AzureOpenAIProvider implements AIProvider {
     const milestoneSummary = atRiskMilestones.map(m => `- ${m.name} (${m.towerName}): ${m.status}`).join('\n') || 'None at risk'
     const pulseSummary = pulseComments.map(p => `- ${p.towerName} / ${p.track}: "${p.comment}"`).join('\n') || 'No pulse comments'
 
-    const prompt = `You are a senior KT (Knowledge Transfer) Programme Manager analysing a live transition programme.
-Your job is to produce an AI-generated executive briefing based on the data below.
+    const redTowers   = towers.filter(t => t.ragStatus === 'RED').map(t => t.name)
+    const amberTowers = towers.filter(t => t.ragStatus === 'AMBER').map(t => t.name)
+    const greenTowers = towers.filter(t => t.ragStatus === 'GREEN').map(t => t.name)
+    const totalOverdue = towers.reduce((s, t) => s + t.overdueActions, 0)
+    const totalOpenRaidd = overdueActions.length
 
-=== PROGRAMME SNAPSHOT ===
-Week Ending: ${weekEnding}
-Total Towers: ${totalTowers}  |  GREEN: ${ragCounts.GREEN}  |  AMBER: ${ragCounts.AMBER}  |  RED: ${ragCounts.RED}
+    const prompt = `ROLE
+You are a Managing Partner at a Big Four professional services firm (think McKinsey, Deloitte, PwC, KPMG). You are preparing a board-level executive briefing on a large-scale Knowledge Transfer (KT) transition programme. Your audience is the Steering Committee and Executive Leadership Team — not the delivery team.
 
-=== TOWER HEALTH (TWG & TCS scores, RAG, overdue actions, blockers, narratives) ===
+WRITING STANDARDS
+- Language must be precise, authoritative, and outcome-oriented. Every sentence must earn its place.
+- Write in active voice. Attribute actions and risks to named towers or workstreams where evidence supports it.
+- Avoid operational detail unless it materially affects an executive decision. Do not list what people are doing — state what it means and what must happen.
+- Synthesise patterns across towers rather than describing each one individually.
+- Quantify wherever the data permits (scores, counts, percentages, named towers).
+- Each section must read as if drafted by a Managing Partner: structured, evidence-based, direct, decision-focused.
+- Do not use filler phrases ("it is worth noting", "it should be highlighted", "going forward").
+- Bullet points must be complete, standalone statements — not fragments.
+
+PROGRAMME DATA (week ending ${weekEnding})
+──────────────────────────────────────────
+Portfolio: ${totalTowers} towers  |  GREEN ${ragCounts.GREEN}  |  AMBER ${ragCounts.AMBER}  |  RED ${ragCounts.RED}
+RED towers: ${redTowers.join(', ') || 'None'}
+AMBER towers: ${amberTowers.join(', ') || 'None'}
+GREEN towers: ${greenTowers.join(', ') || 'None'}
+Overdue actions (total): ${totalOverdue}
+
+TOWER HEALTH — scores, phase, blockers, narratives
 ${towerSummaries}
 
-=== TOP OPEN RAIDD ITEMS (Risks / Assumptions / Issues / Dependencies / Decisions) ===
+OPEN RAIDD ITEMS (Risks / Assumptions / Issues / Dependencies / Decisions)
 ${raiddSummary}
 
-=== OVERDUE ACTIONS ===
+OVERDUE ACTIONS
 ${actionsSummary}
 
-=== AT-RISK / DELAYED / BLOCKED MILESTONES ===
+AT-RISK / DELAYED / BLOCKED MILESTONES
 ${milestoneSummary}
 
-=== PULSE SURVEY COMMENTS FROM TEAMS ===
+TEAM PULSE COMMENTS
 ${pulseSummary}
+──────────────────────────────────────────
 
-=== INSTRUCTIONS ===
-Respond ONLY with a single valid JSON object using exactly these keys (no markdown fences, no extra text):
+OUTPUT INSTRUCTIONS
+Respond ONLY with a single valid JSON object — no markdown fences, no preamble, no commentary outside the JSON.
+Use exactly these six keys:
+
 {
-  "summary": "3-4 sentence overall programme health executive summary. State the RAG breakdown, highlight the most critical issue, and give one forward-looking statement.",
-  "workingWell": "Bullet list (use • prefix, one per line) of 3-5 specific things working well across the programme based on the data.",
-  "notWorking": "Bullet list (use • prefix, one per line) of 3-5 specific issues or gaps that are not working, with tower references where relevant.",
-  "commonRisks": "Paragraph analysis of recurring risks and cross-tower patterns identified in the RAIDD log and narratives. Name specific towers and risk themes.",
-  "priorityActions": "Numbered list (1. 2. 3. 4. 5.) of the top 5 priority actions leadership must take THIS WEEK, ordered by urgency. Be specific — name towers and owners where possible.",
-  "forwardActions": "Bullet list (use • prefix, one per line) of 4-6 forward-looking recommendations for the next 2-4 weeks to improve KT progress across the programme."
+  "summary": "3–4 sentences. Open with a clear statement of overall programme health citing the RAG distribution. Name the highest-risk towers and their primary failure mode. Close with the single most important leadership decision required this week. Tone: board paper executive summary.",
+
+  "workingWell": "3–5 bullet points (• prefix, one per line). Each point must name specific towers or workstreams and describe a concrete outcome or positive trajectory — not activity. Focus on what is de-risked, ahead of schedule, or demonstrating strong delivery confidence.",
+
+  "notWorking": "3–5 bullet points (• prefix, one per line). Each point must name the affected tower(s), state the specific failure or gap, and articulate the programme-level implication if unresolved. Do not describe tasks — describe consequences.",
+
+  "commonRisks": "A synthesised 3–4 sentence risk analysis. Identify recurring risk themes cutting across multiple towers (e.g. resource gaps, capability transfer delays, milestone slippage). Quantify where possible. State the aggregate programme impact if these risks materialise. Avoid listing individual RAIDD items — synthesise the pattern.",
+
+  "priorityActions": "5 numbered actions (1. 2. 3. 4. 5.), ordered by urgency and impact. Each action must: (a) state what must happen, (b) name the accountable party or tower, and (c) specify a clear deadline or decision point. Write as board-level directives, not task-list items.",
+
+  "forwardActions": "4–5 bullet points (• prefix, one per line). Strategic outlook for the next 2–4 weeks. Each point must identify a specific risk horizon, required leadership intervention, or programme-level adjustment. Focus on what changes, escalates, or requires decision — not what continues."
 }`
 
     const response = await fetch(this.url, {
@@ -167,20 +195,17 @@ Respond ONLY with a single valid JSON object using exactly these keys (no markdo
   }
 
   async generateSummary(submission: Partial<WeeklySubmissionDTO>, towerName: string): Promise<string> {
-    const prompt = `You are a KT Programme Manager writing a concise weekly executive summary for a single tower.
+    const prompt = `You are a Managing Partner preparing a one-paragraph executive summary of a single KT tower's weekly submission for the Steering Committee. Be precise, evidence-based, and outcome-oriented. No operational filler.
 
-Tower: ${towerName}
-Week Ending: ${submission.weekEnding}
-Org: ${submission.org}
-RAG Status: ${submission.ragStatus}
-Total Score: ${submission.totalScore}/100
-  Progress: ${submission.progressScore}/100 | Coverage: ${submission.coverageScore}/100
-  Confidence: ${submission.confidenceScore}/100 | Operational: ${submission.operationalScore}/100 | Quality: ${submission.qualityScore}/100
-Narrative: ${submission.narrative ?? 'None provided'}
-Risks: ${(submission.risks ?? []).join(', ') || 'None'}
-Blockers: ${(submission.blockers ?? []).join(', ') || 'None'}
+TOWER DATA
+Tower: ${towerName}  |  Org: ${submission.org}  |  Week ending: ${submission.weekEnding}
+RAG: ${submission.ragStatus}  |  Total score: ${submission.totalScore}/100
+  Progress ${submission.progressScore} | Coverage ${submission.coverageScore} | Confidence ${submission.confidenceScore} | Operational ${submission.operationalScore} | Quality ${submission.qualityScore}
+Narrative: ${submission.narrative ?? 'None'}
+Risks: ${(submission.risks ?? []).join('; ') || 'None'}
+Blockers: ${(submission.blockers ?? []).join('; ') || 'None'}
 
-Write 2-3 sentences: state the health status and score, call out the most important risk or achievement, and recommend one action. Be factual and direct.`
+Write 2–3 sentences. Sentence 1: state the RAG status, overall score, and the primary driver of that rating. Sentence 2: name the most material risk or achievement and its programme implication. Sentence 3 (if warranted): state the single required action and who must take it. Active voice. No fluff.`
 
     const response = await fetch(this.url, {
       method: 'POST',
