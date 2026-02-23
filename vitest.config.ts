@@ -8,8 +8,15 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
+      all: true,
       include: ['src/lib/**'],
       exclude: ['src/lib/prisma.ts', 'src/lib/ai.ts'],
+      thresholds: {
+        lines: 95,
+        functions: 95,
+        branches: 95,
+        statements: 95,
+      },
     },
   },
   resolve: {
