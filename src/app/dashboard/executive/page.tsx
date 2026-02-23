@@ -15,90 +15,128 @@ import { useSession } from '@/hooks/useSession'
 import type { ExecDashboardPayload, RAGStatus, AiReportDTO } from '@/types'
 import Link from 'next/link'
 
-function AiReportSection({ report, onGenerate, generating }: {
+// ─── AI Executive Summary Banner ─────────────────────────────────────────────
+
+function AiExecutiveSummary({ report, canRefresh, onRefresh, refreshing }: {
   report: AiReportDTO | null
-  onGenerate: () => void
-  generating: boolean
+  canRefresh: boolean
+  onRefresh: () => void
+  refreshing: boolean
 }) {
-  const [expanded, setExpanded] = useState(false)
+  const [showDetails, setShowDetails] = useState(true)
   const meta = report?.metadata ? (() => { try { return JSON.parse(report.metadata) } catch { return null } })() : null
 
+  const sections = report ? [
+    { label: 'What\'s Working Well', content: report.workingWell, icon: '✅', bg: 'bg-green-50 border-green-200', text: 'text-green-900', head: 'text-green-800' },
+    { label: 'What\'s Not Working', content: report.notWorking, icon: '⚠️', bg: 'bg-amber-50 border-amber-200', text: 'text-amber-900', head: 'text-amber-800' },
+    { label: 'Common Risks & Issues', content: report.commonRisks, icon: '🔴', bg: 'bg-red-50 border-red-200', text: 'text-red-900', head: 'text-red-800' },
+    { label: 'Priority Actions This Week', content: report.priorityActions, icon: '🎯', bg: 'bg-purple-50 border-purple-200', text: 'text-purple-900', head: 'text-purple-800' },
+    { label: 'Forward Actions (2–4 weeks)', content: report.forwardActions, icon: '📅', bg: 'bg-blue-50 border-blue-200', text: 'text-blue-900', head: 'text-blue-800' },
+  ].filter(s => s.content) : []
+
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle>AI Intelligence Report</CardTitle>
+    <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+      {/* Banner header */}
+      <div className="bg-gradient-to-r from-slate-800 to-slate-700 px-5 py-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 text-base">🤖</div>
+            <div className="min-w-0">
+              <div className="font-semibold text-white text-sm">AI Executive Summary</div>
+              {report ? (
+                <div className="text-xs text-slate-300 mt-0.5">
+                  Last updated {formatDate(report.createdAt)} by {report.generatedByName}
+                  {meta && ` · ${meta.totalTowers} towers · ${meta.ragCounts?.RED ?? 0} RED / ${meta.ragCounts?.AMBER ?? 0} AMBER / ${meta.ragCounts?.GREEN ?? 0} GREEN`}
+                </div>
+              ) : (
+                <div className="text-xs text-slate-400 mt-0.5">No report generated yet</div>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
             {report && (
-              <p className="text-xs text-gray-400 mt-0.5">
-                Generated {formatDate(report.createdAt)} by {report.generatedByName}
-                {meta && ` · ${meta.totalTowers} towers · ${meta.ragCounts?.RED ?? 0} RED`}
-              </p>
+              <button
+                onClick={() => setShowDetails(d => !d)}
+                className="text-xs text-slate-300 hover:text-white px-3 py-1.5 rounded border border-slate-500 hover:border-slate-300 transition-colors"
+              >
+                {showDetails ? '▲ Collapse' : '▼ Expand'}
+              </button>
+            )}
+            {canRefresh && (
+              <Button
+                size="sm"
+                onClick={onRefresh}
+                loading={refreshing}
+                className="bg-white text-slate-800 hover:bg-slate-100 border-0 font-semibold"
+              >
+                {refreshing ? 'Analysing…' : report ? '↻ Refresh AI Summary' : '✦ Generate AI Summary'}
+              </Button>
             )}
           </div>
-          <Button size="sm" onClick={onGenerate} loading={generating}>
-            {generating ? 'Analysing…' : report ? '↻ Regenerate' : '✦ Generate AI Report'}
-          </Button>
         </div>
-      </CardHeader>
+      </div>
 
-      {!report && !generating && (
-        <div className="text-center py-8 text-gray-400">
-          <div className="text-3xl mb-2">🤖</div>
-          <p className="text-sm">No AI report generated yet.</p>
-          <p className="text-xs mt-1">Click &ldquo;Generate AI Report&rdquo; to analyse live programme data.</p>
-        </div>
-      )}
-
-      {generating && (
-        <div className="text-center py-8">
-          <div className="inline-flex items-center gap-2 text-blue-600 text-sm">
-            <div className="w-4 h-4 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-            Analysing programme data with Azure OpenAI…
+      {/* Generating state */}
+      {refreshing && (
+        <div className="px-5 py-8 text-center">
+          <div className="inline-flex items-center gap-2 text-slate-600 text-sm">
+            <div className="w-4 h-4 border-2 border-slate-200 border-t-slate-600 rounded-full animate-spin" />
+            Querying live data and running Azure OpenAI analysis…
           </div>
         </div>
       )}
 
-      {report && !generating && (
-        <div className="space-y-4">
-          {/* Summary */}
-          <div className="bg-blue-50 border border-blue-100 rounded-lg p-4">
-            <p className="text-sm text-blue-900 leading-relaxed">{report.summary}</p>
+      {/* No report yet */}
+      {!report && !refreshing && (
+        <div className="px-5 py-8 text-center text-slate-400">
+          {canRefresh
+            ? <p className="text-sm">Click <strong className="text-slate-600">&ldquo;Generate AI Summary&rdquo;</strong> to analyse all live programme data with Azure OpenAI.</p>
+            : <p className="text-sm">AI summary not yet generated. Ask an Admin or Exec user to generate one.</p>
+          }
+        </div>
+      )}
+
+      {/* Report content */}
+      {report && !refreshing && showDetails && (
+        <div className="p-5 space-y-4">
+          {/* Executive summary */}
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-4">
+            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Programme Summary</div>
+            <p className="text-sm text-slate-800 leading-relaxed">{report.summary}</p>
           </div>
 
-          <button
-            onClick={() => setExpanded(e => !e)}
-            className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-          >
-            {expanded ? '▲ Collapse details' : '▼ Show full analysis'}
-          </button>
-
-          {expanded && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {[
-                { label: '✅ What\'s Working Well', content: report.workingWell, color: 'bg-green-50 border-green-100 text-green-900' },
-                { label: '⚠️ What\'s Not Working', content: report.notWorking, color: 'bg-amber-50 border-amber-100 text-amber-900' },
-                { label: '🔴 Common Risks & Issues', content: report.commonRisks, color: 'bg-red-50 border-red-100 text-red-900' },
-                { label: '🎯 Priority Actions This Week', content: report.priorityActions, color: 'bg-purple-50 border-purple-100 text-purple-900' },
-                { label: '📅 Forward Actions', content: report.forwardActions, color: 'bg-slate-50 border-slate-200 text-slate-800 md:col-span-2' },
-              ].filter(s => s.content).map(section => (
-                <div key={section.label} className={`border rounded-lg p-4 ${section.color}`}>
-                  <div className="text-xs font-semibold mb-2">{section.label}</div>
-                  <p className="text-xs leading-relaxed whitespace-pre-line">{section.content}</p>
+          {/* Detail sections */}
+          {sections.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {sections.map(s => (
+                <div key={s.label} className={`rounded-lg border p-4 ${s.bg}`}>
+                  <div className={`text-xs font-semibold mb-2 flex items-center gap-1.5 ${s.head}`}>
+                    <span>{s.icon}</span>{s.label}
+                  </div>
+                  <p className={`text-xs leading-relaxed whitespace-pre-line ${s.text}`}>{s.content}</p>
                 </div>
               ))}
             </div>
           )}
         </div>
       )}
-    </Card>
+
+      {/* Collapsed summary-only state */}
+      {report && !refreshing && !showDetails && (
+        <div className="px-5 py-3 bg-slate-50 border-t border-slate-100">
+          <p className="text-sm text-slate-700 leading-relaxed line-clamp-2">{report.summary}</p>
+        </div>
+      )}
+    </div>
   )
 }
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ExecutiveDashboard() {
   const { session } = useSession()
   const queryClient = useQueryClient()
-  const canGenerate = session?.role === 'ADMIN' || session?.role === 'EXEC'
+  const canRefresh = session?.role === 'ADMIN' || session?.role === 'EXEC'
 
   const { data: aiData } = useQuery<{ data: AiReportDTO | null }>({
     queryKey: ['ai-report'],
@@ -109,7 +147,7 @@ export default function ExecutiveDashboard() {
     },
   })
 
-  const { mutate: generateReport, isPending: generating } = useMutation({
+  const { mutate: generateReport, isPending: refreshing } = useMutation({
     mutationFn: async () => {
       const res = await fetch('/api/ai/report', { method: 'POST' })
       if (!res.ok) throw new Error('Generation failed')
@@ -141,7 +179,6 @@ export default function ExecutiveDashboard() {
   const ragCounts = payload.towers.reduce<Record<string, number>>((acc, t) => {
     const twgRag = t.twgScore?.ragStatus
     const tcsRag = t.tcsScore?.ragStatus
-    // Use worst RAG
     const rag = twgRag === 'RED' || tcsRag === 'RED' ? 'RED' :
                 twgRag === 'AMBER' || tcsRag === 'AMBER' ? 'AMBER' :
                 (twgRag || tcsRag) ?? 'AMBER'
@@ -150,9 +187,7 @@ export default function ExecutiveDashboard() {
   }, {})
 
   const ragDonutData = (['GREEN', 'AMBER', 'RED'] as RAGStatus[]).map(r => ({
-    rag: r,
-    count: ragCounts[r] ?? 0,
-    label: r,
+    rag: r, count: ragCounts[r] ?? 0, label: r,
   }))
 
   const allTrend = payload.towers.flatMap(t => t.trend)
@@ -176,13 +211,20 @@ export default function ExecutiveDashboard() {
           </div>
         </div>
 
+        {/* ── AI Executive Summary ── always at top */}
+        <AiExecutiveSummary
+          report={aiData?.data ?? null}
+          canRefresh={canRefresh}
+          onRefresh={() => generateReport()}
+          refreshing={refreshing}
+        />
+
         {/* Summary charts */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
             <CardHeader><CardTitle>Tower RAG Overview</CardTitle></CardHeader>
             <RAGDonut data={ragDonutData} />
           </Card>
-
           <Card className="md:col-span-2">
             <CardHeader><CardTitle>Health Score Trend — All Towers</CardTitle></CardHeader>
             {allTrend.length > 0 ? (
@@ -252,15 +294,6 @@ export default function ExecutiveDashboard() {
             })}
           </div>
         </div>
-
-        {/* AI Intelligence */}
-        {canGenerate && (
-          <AiReportSection
-            report={aiData?.data ?? null}
-            onGenerate={() => generateReport()}
-            generating={generating}
-          />
-        )}
 
         {/* Bottom row */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
